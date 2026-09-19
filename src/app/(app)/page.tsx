@@ -7,8 +7,8 @@ export default function Home() {
       <h1 className="text-4xl font-semibold tracking-tight">aiinsclaim</h1>
       <p className="text-lg leading-8 text-text-muted">
         AI-native, agentic insurance claims processing — Ledger workbench shell
-        for Auto and Property claims. Use the preview role switcher and theme
-        toggle to inspect the Phase 0 interface.
+        for Auto and Property claims. Navigation and pages are filtered by your
+        signed-in role.
       </p>
       <div className="rounded-xl border border-border bg-surface p-6 text-sm">
         <p className="font-medium">Quick start</p>
