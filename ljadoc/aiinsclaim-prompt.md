@@ -113,6 +113,16 @@ Every per-feature Cursor prompt must include, in order:
 
 ---
 
+## 10\. Coding-phase main prompt (after docs exist)
+
+Once PRD, TEST-PLAN, DESIGN, and BUSINESS-RULES are in the repo, agents use the **runtime main prompt** — not this bootstrap template. Canonical copy: [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md) and `.cursor/rules/aiinsclaim.mdc`.
+
+Example (aiinsclaim):
+
+> You are building aiinsclaim, an AI-native agentic insurance claims system (Auto + Property, learning stack on mock data). Obey `.cursor/rules/` and `ljadoc/AGENTS.md`. Read `ljadoc/DESIGN.md` and `ljadoc/BUSINESS-RULES.md` before coding. Read `ljadoc/kb/INDEX.md` and dependency as-built files for the current PBI. TypeScript strict; Zod-validate all boundaries. No business logic hard-coded in components — logic lives in BR-* decision tables or `src/lib/rules/`. Write Vitest/Playwright tests per TEST-PLAN TC IDs; update `ljadoc/kb/as-built/PBI-NNN.md` when tests pass.
+
+---
+
 ## Quick-Fill Cheat Sheet
 
 | Placeholder | Example |

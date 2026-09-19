@@ -16,7 +16,11 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx seed/index.ts",
     "seed:rules": "echo \"Rules seed — implement in PBI-005\"",
-    "seed:demo": "echo \"Demo seed — implement in PBI-005\""
+    "seed:demo": "echo \"Demo seed — implement in PBI-005\"",
+    "docs:generate": "node scripts/generate-kb-reference.mjs",
+    "docs:kb-check": "node scripts/check-kb.mjs",
+    "docs:kb-test": "node --test scripts/check-kb.test.mjs",
+    "issues:pbi-update": "tsx ljadev/update-pbi-issues.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",

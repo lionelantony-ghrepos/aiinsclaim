@@ -25,7 +25,7 @@ AI-native, agentic insurance claims processing system — **learning project** o
 | Client data | TanStack Query |
 | Tests | Vitest + Playwright |
 
-See `ljadev/README.md` for local setup and `ljadoc/DESIGN.md` for architecture.
+See `ljadev/README.md` for local setup, `ljadoc/DESIGN.md` for architecture, and **`ljadoc/kb/INDEX.md`** for the as-built knowledge base (agents read this before each PBI).
 
 ## Getting Started
 
@@ -50,3 +50,5 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run test:e2e` | Browser tests |
 | `npm run typecheck` | TypeScript check |
 | `npm run lint` | ESLint |
+| `npm run docs:kb-check` | Validate knowledge base completeness |
+| `npm run docs:generate` | Regenerate KB reference snapshots |

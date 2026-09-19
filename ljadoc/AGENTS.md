@@ -2,12 +2,19 @@
 
 Rules every coding agent must follow when building aiinsclaim. Read DESIGN.md first; this file governs *how* you write, DESIGN governs *what*.
 
+## Main prompt
+
+> You are building **aiinsclaim**, an AI-native agentic insurance claims system (Auto + Property, learning stack on mock data). Obey `.cursor/rules/` and this file. Read `DESIGN.md` and `BUSINESS-RULES.md` before coding. Read `kb/INDEX.md` and dependency as-built files for the current PBI. TypeScript strict; Zod-validate all boundaries. No business logic hard-coded in components — logic lives in BR-* decision tables or `src/lib/rules/`. Write Vitest/Playwright tests per `TEST-PLAN.md` TC IDs; update `kb/as-built/PBI-NNN.md` when tests pass.
+
+Full copy-paste version: [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md). Cursor loads `.cursor/rules/aiinsclaim.mdc` automatically.
+
 ## Golden rules
 
 1. **No hard-coded business values.** Thresholds, durations, limits, amounts → `parameters` table or decision tables (BUSINESS-RULES.md). If you type a business number into TS/TSX, stop and move it.
 2. **One PBI per session.** Build exactly the scoped PBI; its "Out of scope" list is binding. Don't refactor neighbors opportunistically.
 3. **Docs are canonical.** On conflict: DATA-DICTIONARY (schema) > API-CONTRACTS (payloads) > DESIGN (architecture) > PRD (feature detail). If truly ambiguous, add a `// QUESTION(pbi-xxx):` comment and choose the most conservative reading.
 4. **Self-verify before done:** run `npm run typecheck && npm run lint && npm run test`, seed if schema changed, then execute the PBI's acceptance checks (TEST-PLAN).
+5. **Knowledge base (required every PBI):** read [kb/INDEX.md](kb/INDEX.md) and dependency as-built files before coding. After shipping, update `ljadoc/kb/as-built/PBI-NNN.md` in the **same commit** as code. Run `npm run docs:generate` if packages or `src/lib/schemas` changed; run `npm run docs:kb-check`. Patch `08-User-Guide.md` only if user-visible UI shipped. Do not index `ljadoc/` or `ljadoc/kb/` into any future claims RAG unless explicitly scheduled.
 
 ## Stack & structure
 
@@ -49,6 +56,21 @@ Rules every coding agent must follow when building aiinsclaim. Read DESIGN.md fi
 
 Keyboard operability, visible focus, labels on all inputs, aria-live for async status, contrast via tokens, status = icon + label (never color-only). Run axe on new pages.
 
+## Knowledge base
+
+Before each PBI session:
+
+1. Read [kb/INDEX.md](kb/INDEX.md) and as-built files for **dependency PBIs**
+2. Read [kb/traceability.md](kb/traceability.md) for AC/TC IDs
+
+After shipping:
+
+1. Copy [kb/_template-as-built.md](kb/_template-as-built.md) → `kb/as-built/PBI-NNN.md` (or update existing)
+2. Fill all required headings with facts (shipped vs spec, surfaces, contracts, BR-* IDs only, ops, trace)
+3. Update [kb/INDEX.md](kb/INDEX.md) status column if needed
+4. Add [kb/adr/](kb/adr/) only if a durable choice is missing from DESIGN.md
+5. Run `npm run docs:generate` if schemas/packages changed; `npm run docs:kb-check`
+
 ## Definition of Done (every PBI)
 
 - [ ] Scope matches PRD; out-of-scope untouched
@@ -56,4 +78,5 @@ Keyboard operability, visible focus, labels on all inputs, aria-live for async s
 - [ ] Schema pushes cleanly to fresh SQLite; `npm run seed` still works
 - [ ] No hard-coded business values; no PII in logs; access scope on new queries
 - [ ] TEST-PLAN ACs for the PBI demonstrably pass
+- [ ] `ljadoc/kb/as-built/PBI-NNN.md` updated; `npm run docs:kb-check` passes
 - [ ] Conventional Commit(s) referencing the PBI

@@ -355,10 +355,36 @@ References: architecture `DESIGN.md`, rules `BUSINESS-RULES.md`, schema `DATA-DI
 # Phase 3 — Later (Could)
 
 ## PBI-019 — Claims copilot NL query (AGT-COPILOT) — Could
-Natural-language questions over claims data ("water damage claims > 10k breaching SLA?") via read-only allowlisted SQL views; renders table + generated-SQL disclosure; per AGENT-OPS guardrails (read-only role, view allowlist, row limits). Depends on PBI-018. ACs: AC-019-01..03.
+
+**User story:** As staff, I ask natural-language questions over claims data and get tabular answers with disclosed SQL.
+**Functional requirements:** read-only allowlisted SQL views; AGT-COPILOT generates SQL from NL; result table + generated-SQL disclosure; guardrails per AGENT-OPS (read-only role, view allowlist, row limits, injection resistance).
+**Rules:** none new. **Data touched:** read-only views, agent_runs.
+
+**Cursor prompt:**
+> **Context:** AGENT-OPS §AGT-COPILOT; depends on PBI-018.
+> **Task:** Build read-only NL query copilot: allowlisted SQL views only, agent generates SQL from natural language, executes via read-only role, renders result table + disclosed generated SQL; guardrails per AGENT-OPS (row limits, view allowlist, injection resistance, no writes).
+> **Constraints:** never auto-execute destructive SQL; no indexing of `ljadoc/` into copilot RAG; all queries logged to agent_runs.
+> **Files expected:** `src/lib/agents/copilot.ts`, copilot UI route, view allowlist config, server actions.
+> **Acceptance check:** AC-019-01..03.
+> **Out of scope:** write queries, external data sources.
+
+**DoD:** AC-019-01..03.
 
 ## PBI-020 — Comms drafting agent (AGT-COMMS) — Could
-Drafts claimant emails/letters (ack, info request, decision) from templates + claim summary; human edits/sends (mock outbox); tone/reading-level constraints; never sends autonomously. Depends on PBI-017. ACs: AC-020-01..03.
+
+**User story:** As staff, I draft claimant communications from templates and claim summary; I edit and send manually.
+**Functional requirements:** ack/info-request/decision letter drafts from templates + summary; editable preview; mock outbox (never auto-send); tone/reading-level validated on output schema; drafts logged to agent_runs.
+**Rules:** none new. **Data touched:** agent_runs, notifications (mock outbox).
+
+**Cursor prompt:**
+> **Context:** AGENT-OPS §AGT-COMMS; depends on PBI-017.
+> **Task:** Implement comms drafting agent: ack/info-request/decision letter drafts from templates + claim summary; editable preview; mock outbox (never auto-send); tone/reading-level validated on output schema; drafts logged to agent_runs with prompt version.
+> **Constraints:** human must explicitly send; no autonomous outbound comms; no PII in logs beyond claim IDs.
+> **Files expected:** `src/lib/agents/comms.ts`, draft UI in workbench, mock outbox, server actions.
+> **Acceptance check:** AC-020-01..03.
+> **Out of scope:** real email/SMS integrations.
+
+**DoD:** AC-020-01..03.
 
 ---
 
