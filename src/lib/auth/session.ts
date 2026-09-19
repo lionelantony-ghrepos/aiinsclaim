@@ -1,6 +1,7 @@
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import type { UserRole } from "@/lib/db/schema";
+import { sessionOptions } from "./session-config";
 
 export type SessionUser = {
   id: string;
@@ -12,17 +13,6 @@ export type SessionUser = {
 
 export type SessionData = {
   user?: SessionUser;
-};
-
-const sessionOptions = {
-  password:
-    process.env.SESSION_SECRET ?? "dev-only-change-me-in-production-32chars",
-  cookieName: "aiinsclaim_session",
-  cookieOptions: {
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    sameSite: "lax" as const,
-  },
 };
 
 export async function getSession() {
@@ -40,4 +30,15 @@ export async function requireRole(...roles: UserRole[]) {
     throw new Error("UNAUTHORIZED");
   }
   return user;
+}
+
+export async function establishSession(user: SessionUser) {
+  const session = await getSession();
+  session.user = user;
+  await session.save();
+}
+
+export async function destroySession() {
+  const session = await getSession();
+  session.destroy();
 }

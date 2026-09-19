@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { AppShell } from "@/components/layout/app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
-import { RolePreviewProvider } from "@/components/providers/role-preview-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
@@ -31,11 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <body className="min-h-full font-sans">
         <QueryProvider>
-          <ThemeProvider>
-            <RolePreviewProvider>
-              <AppShell>{children}</AppShell>
-            </RolePreviewProvider>
-          </ThemeProvider>
+          <ThemeProvider>{children}</ThemeProvider>
         </QueryProvider>
       </body>
     </html>

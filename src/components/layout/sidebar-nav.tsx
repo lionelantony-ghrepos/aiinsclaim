@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { UserRole } from "@/lib/db/schema/enums";
 import { navItemsForRole } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-import { useRolePreview } from "@/components/providers/role-preview-provider";
 
-export function SidebarNav() {
-  const { role } = useRolePreview();
+export function SidebarNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
   const items = navItemsForRole(role);
 

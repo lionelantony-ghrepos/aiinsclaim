@@ -1,9 +1,16 @@
 import type { ReactNode } from "react";
-import { RoleSwitcher } from "@/components/layout/role-switcher";
+import type { SessionUser } from "@/lib/auth/session";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { UserMenu } from "@/components/layout/user-menu";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  user,
+  children,
+}: {
+  user: SessionUser;
+  children: ReactNode;
+}) {
   return (
     <div className="flex min-h-full bg-bg text-text">
       <a
@@ -19,15 +26,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             Claims workbench
           </span>
         </p>
-        <SidebarNav />
+        <SidebarNav role={user.role} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-6 py-3">
           <p className="text-sm text-text-muted">
-            Role switcher is a placeholder until auth ships in PBI-003.
+            Signed in as {user.displayName}
           </p>
           <div className="flex items-center gap-3">
-            <RoleSwitcher />
+            <UserMenu user={user} />
             <ThemeToggle />
           </div>
         </header>
