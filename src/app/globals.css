@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Ledger tokens — hex lives here only (DESIGN §9). Components consume CSS vars. */
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-raised: #e8ecf6;
+  --border: #c5cad8;
+  --text: #1a1f36;
+  --text-muted: #4b5568;
+  --primary: #3b4cca;
+  --primary-foreground: #ffffff;
+  --accent: #0f766e;
+  --accent-foreground: #ffffff;
+  --success: #157f3d;
+  --warning: #b45309;
+  --danger: #b42318;
+  --danger-foreground: #ffffff;
+  --info: #175cd3;
+  --status-draft: #475569;
+  --status-triage: #b45309;
+  --status-assessment: #1d4ed8;
+  --status-settlement: #6d28d9;
+  --status-paid: #15803d;
+  --status-denied: #b91c1c;
+  --fraud-low: #157f3d;
+  --fraud-medium: #b45309;
+  --fraud-high: #c2410c;
+  --fraud-critical: #9f1239;
+  --row-compact: 2rem;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --ring: var(--primary);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --bg: #0b1020;
+  --surface: #141a2e;
+  --surface-raised: #1c2440;
+  --border: #3a4568;
+  --text: #e8ecf8;
+  --text-muted: #a8b0c7;
+  --primary: #8b9bff;
+  --primary-foreground: #0b1020;
+  --accent: #2dd4bf;
+  --accent-foreground: #0b1020;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --danger-foreground: #0b1020;
+  --info: #7dd3fc;
+  --status-draft: #cbd5e1;
+  --status-triage: #fbbf24;
+  --status-assessment: #93c5fd;
+  --status-settlement: #c4b5fd;
+  --status-paid: #86efac;
+  --status-denied: #fca5a5;
+  --fraud-low: #4ade80;
+  --fraud-medium: #fbbf24;
+  --fraud-high: #fb923c;
+  --fraud-critical: #fb7185;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --ring: var(--primary);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-status-draft: var(--status-draft);
+  --color-status-triage: var(--status-triage);
+  --color-status-assessment: var(--status-assessment);
+  --color-status-settlement: var(--status-settlement);
+  --color-status-paid: var(--status-paid);
+  --color-status-denied: var(--status-denied);
+  --color-fraud-low: var(--fraud-low);
+  --color-fraud-medium: var(--fraud-medium);
+  --color-fraud-high: var(--fraud-high);
+  --color-fraud-critical: var(--fraud-critical);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.font-mono,
+code,
+kbd,
+pre {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+}
