@@ -1,7 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/lib/db/client";
 import {
   claims,
+  documents,
+  extractions,
+  fraudScores,
   payments,
   reserves,
   tasks,
@@ -98,20 +101,78 @@ async function guardBrTriage001(
   return { passed: true, ruleAuditId: result.auditId };
 }
 
+async function buildStpInputsFromClaim(
+  db: Db,
+  claimId: string,
+  claim: Awaited<ReturnType<typeof loadClaim>>,
+  context: GuardContext,
+): Promise<Record<string, unknown>> {
+  const fnol = await evaluateFnolCompleteness(db, claimId, {
+    asOf: context.asOf,
+    actor: context.actor,
+  });
+
+  const [latestFraud] = await db
+    .select()
+    .from(fraudScores)
+    .where(eq(fraudScores.claimId, claimId))
+    .orderBy(desc(fraudScores.createdAt))
+    .limit(1);
+
+  const docRows = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.claimId, claimId));
+
+  const docsExtracted =
+    docRows.length > 0 &&
+    docRows.every(
+      (doc) => doc.status === "verified" || doc.status === "extracted",
+    );
+
+  let extractionMinConfidence = 0;
+  if (docRows.length > 0) {
+    const extractionRows = await db
+      .select({ minConfidence: extractions.minConfidence })
+      .from(extractions)
+      .innerJoin(documents, eq(extractions.documentId, documents.id))
+      .where(eq(documents.claimId, claimId));
+
+    if (extractionRows.length > 0) {
+      extractionMinConfidence = Math.min(
+        ...extractionRows.map((row) => Number(row.minConfidence)),
+      );
+    }
+  }
+
+  return {
+    route: claim.route ?? "standard",
+    fraud_band: latestFraud?.band ?? "medium",
+    all_required_docs_extracted: fnol.complete && docsExtracted,
+    extraction_min_confidence: extractionMinConfidence,
+    claimant_prior_claims_12m: 0,
+    estimated_amount: Number(claim.estimatedAmount ?? 0),
+  };
+}
+
 async function guardBrStp001(
   db: Db,
   claimId: string,
   context: GuardContext,
 ): Promise<GuardResult> {
   const claim = await loadClaim(db, claimId);
-  const inputs = context.stpInputs ?? {
-    route: claim.route ?? "green_lane",
-    fraud_band: "low",
-    all_required_docs_extracted: true,
-    extraction_min_confidence: 0.95,
-    claimant_prior_claims_12m: 0,
-    estimated_amount: Number(claim.estimatedAmount ?? 0),
-  };
+
+  if (claim.route !== "green_lane") {
+    throw new GuardFailedError(
+      "BR-STP-001",
+      "STP requires green_lane route",
+      { route: claim.route },
+    );
+  }
+
+  const inputs =
+    context.stpInputs ??
+    (await buildStpInputsFromClaim(db, claimId, claim, context));
 
   const result = await evaluateRuleSet(db, "BR-STP-001", inputs, {
     claimId,
