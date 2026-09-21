@@ -97,6 +97,21 @@ export const claimItems = sqliteTable("claim_items", {
     .$defaultFn(() => new Date()),
 });
 
+export const claimTransitions = sqliteTable("claim_transitions", {
+  id: text("id").primaryKey(),
+  fromStatus: text("from_status").notNull(),
+  toStatus: text("to_status").$type<ClaimStatus>().notNull(),
+  triggerLabel: text("trigger_label").notNull(),
+  guardCode: text("guard_code"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const claimStateHistory = sqliteTable("claim_state_history", {
   id: text("id").primaryKey(),
   claimId: text("claim_id")

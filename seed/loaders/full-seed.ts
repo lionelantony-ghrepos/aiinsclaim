@@ -29,6 +29,7 @@ import { generateUsers } from "../generators/users";
 import { deterministicId } from "../lib/deterministic-id";
 import { truncateAll } from "../lib/truncate";
 import { seedRulesAndParameters } from "./rules";
+import { seedClaimTransitions } from "./transitions";
 
 export type SeedResult = {
   userCount: number;
@@ -44,6 +45,7 @@ export async function runFullSeed(
 ): Promise<SeedResult> {
   await truncateAll(db, sqlite);
   await seedRulesAndParameters(db);
+  await seedClaimTransitions(db);
 
   const seedUsers = await generateUsers();
   await db.insert(users).values(
