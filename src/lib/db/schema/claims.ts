@@ -1,5 +1,6 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import type {
+  ClaimPartyRole,
   ClaimRoute,
   ClaimStatus,
   ClaimType,
@@ -66,7 +67,7 @@ export const claimParties = sqliteTable("claim_parties", {
   partyId: text("party_id")
     .notNull()
     .references(() => parties.id),
-  role: text("role").notNull(),
+  role: text("role").$type<ClaimPartyRole>().notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

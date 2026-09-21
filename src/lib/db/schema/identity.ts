@@ -1,5 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { UserRole } from "./enums";
+import type { PartyType, UserRole } from "./enums";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -23,7 +23,7 @@ export const users = sqliteTable("users", {
 
 export const parties = sqliteTable("parties", {
   id: text("id").primaryKey(),
-  partyType: text("party_type").notNull(),
+  partyType: text("party_type").$type<PartyType>().notNull(),
   fullName: text("full_name").notNull(),
   email: text("email"),
   phone: text("phone"),
