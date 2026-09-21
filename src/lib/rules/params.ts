@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "@/lib/db/client";
 import { parameters, type ParameterValueType } from "@/lib/db/schema";
 
@@ -64,6 +64,7 @@ export async function getParameter(
         or(isNull(parameters.effectiveTo), gt(parameters.effectiveTo, asOfStr)),
       ),
     )
+    .orderBy(desc(parameters.effectiveFrom))
     .limit(1);
 
   if (!row) {

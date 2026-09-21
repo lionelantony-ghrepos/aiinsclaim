@@ -1,7 +1,14 @@
 import { count, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { IsolatedDb } from "@/lib/db/isolated";
-import { ruleAuditLog } from "@/lib/db/schema";
+import {
+  ruleActions,
+  ruleAuditLog,
+  ruleConditions,
+  rules,
+  ruleSets,
+  ruleSetVersions,
+} from "@/lib/db/schema";
 import {
   evaluateRuleSet,
   NoActiveVersionError,
@@ -173,6 +180,99 @@ describe("PBI-006 rules engine golden tests", () => {
     ]);
   });
 
+  it("TC-006-02 effective-dated version selection", async () => {
+    const triageInputs = {
+      line_of_business: "auto" as const,
+      estimated_amount: 1800,
+      injury_involved: false,
+      liability_disputed: false,
+      severity_score: 22,
+      complexity_score: 15,
+      policy_active: true,
+    };
+
+    const v1Result = await evaluateRuleSet(
+      isolated.db,
+      "BR-TRIAGE-001",
+      triageInputs,
+      { asOf: "2026-06-01", dryRun: true },
+    );
+    expect(v1Result.outputs.route).toBe("green_lane");
+
+    const [triageSet] = await isolated.db
+      .select()
+      .from(ruleSets)
+      .where(eq(ruleSets.code, "BR-TRIAGE-001"))
+      .limit(1);
+    expect(triageSet).toBeDefined();
+
+    const [v1Version] = await isolated.db
+      .select()
+      .from(ruleSetVersions)
+      .where(eq(ruleSetVersions.id, v1Result.versionId))
+      .limit(1);
+    expect(v1Version).toBeDefined();
+
+    const v2VersionId = "00000000-0000-4000-8000-000000000062";
+    const v2RuleId = "00000000-0000-4000-8000-000000000063";
+    const v2ActionId = "00000000-0000-4000-8000-000000000064";
+
+    await isolated.db
+      .update(ruleSetVersions)
+      .set({
+        status: "retired",
+        effectiveTo: "2026-07-01",
+      })
+      .where(eq(ruleSetVersions.id, v1Version!.id));
+
+    await isolated.db.insert(ruleSetVersions).values({
+      id: v2VersionId,
+      ruleSetId: triageSet!.id,
+      version: 2,
+      status: "active",
+      effectiveFrom: "2026-07-01",
+      effectiveTo: null,
+      changeNote: "TC-006-02 test version",
+      createdBy: null,
+    });
+
+    await isolated.db.insert(rules).values({
+      id: v2RuleId,
+      versionId: v2VersionId,
+      rowOrder: 1,
+      label: "Version 2 default supervisor route",
+    });
+
+    await isolated.db.insert(ruleActions).values({
+      id: v2ActionId,
+      ruleId: v2RuleId,
+      actionType: "set_output",
+      paramsJson: {
+        route: "supervisor",
+        target_queue: "supervision",
+        priority: 5,
+      },
+    });
+
+    const v1WindowResult = await evaluateRuleSet(
+      isolated.db,
+      "BR-TRIAGE-001",
+      triageInputs,
+      { asOf: "2026-06-15", dryRun: true },
+    );
+    expect(v1WindowResult.versionId).toBe(v1Version!.id);
+    expect(v1WindowResult.outputs.route).toBe("green_lane");
+
+    const v2WindowResult = await evaluateRuleSet(
+      isolated.db,
+      "BR-TRIAGE-001",
+      triageInputs,
+      { asOf: "2026-07-15", dryRun: true },
+    );
+    expect(v2WindowResult.versionId).toBe(v2VersionId);
+    expect(v2WindowResult.outputs.route).toBe("supervisor");
+  });
+
   it("TC-006-04 writes rule_audit_log on successful evaluation", async () => {
     const before = await isolated.db
       .select({ total: count() })
@@ -270,7 +370,76 @@ describe("PBI-006 rules engine golden tests", () => {
     expect(result.matchedRuleIds).toHaveLength(1);
   });
 
+  it("TC-006-05 collect_sum totals score from all matching rows", async () => {
+    const result = await evaluateRuleSet(
+      isolated.db,
+      "BR-FRAUD-001",
+      {
+        days_since_policy_start: 12,
+        days_to_report: 0,
+        claimant_prior_claims_12m: 2,
+        amount_vs_coverage_ratio: 0.5,
+        narrative_inconsistency: 0.7,
+        doc_anomaly: 0,
+        incident_time_band: "day",
+        police_report_present: true,
+        claim_type: "collision",
+      },
+      { asOf: "2026-06-01", dryRun: true },
+    );
+
+    expect(result.matchedRuleIds.length).toBeGreaterThanOrEqual(3);
+    expect(result.outputs.fraud_score).toBe(65);
+    expect(result.outputs.reason_codes).toEqual([
+      "NEW_POLICY",
+      "FREQUENCY",
+      "NARRATIVE",
+    ]);
+  });
+
   it("TC-006-05 hit policy all fires every matching row", async () => {
+    const [slaSet] = await isolated.db
+      .select()
+      .from(ruleSets)
+      .where(eq(ruleSets.code, "BR-SLA-001"))
+      .limit(1);
+    expect(slaSet).toBeDefined();
+
+    const [slaVersion] = await isolated.db
+      .select()
+      .from(ruleSetVersions)
+      .where(eq(ruleSetVersions.ruleSetId, slaSet!.id))
+      .limit(1);
+    expect(slaVersion).toBeDefined();
+
+    const extraRuleId = "00000000-0000-4000-8000-000000000065";
+    const extraConditionId = "00000000-0000-4000-8000-000000000066";
+    const extraActionId = "00000000-0000-4000-8000-000000000067";
+
+    await isolated.db.insert(rules).values({
+      id: extraRuleId,
+      versionId: slaVersion!.id,
+      rowOrder: 99,
+      label: "Secondary acknowledge timer",
+    });
+
+    await isolated.db.insert(ruleConditions).values({
+      id: extraConditionId,
+      ruleId: extraRuleId,
+      inputKey: "trigger",
+      operator: "eq",
+      valueJson: "claim_submitted",
+    });
+
+    await isolated.db.insert(ruleActions).values({
+      id: extraActionId,
+      ruleId: extraRuleId,
+      actionType: "set_output",
+      paramsJson: {
+        secondary_timer_code: "acknowledge_claimant_backup",
+      },
+    });
+
     const result = await evaluateRuleSet(
       isolated.db,
       "BR-SLA-001",
@@ -278,7 +447,10 @@ describe("PBI-006 rules engine golden tests", () => {
       { asOf: "2026-06-01", dryRun: true },
     );
 
+    expect(result.matchedRuleIds.length).toBeGreaterThanOrEqual(2);
     expect(result.outputs.timer_code).toBe("acknowledge_claimant");
-    expect(result.matchedRuleIds).toHaveLength(1);
+    expect(result.outputs.secondary_timer_code).toBe(
+      "acknowledge_claimant_backup",
+    );
   });
 });

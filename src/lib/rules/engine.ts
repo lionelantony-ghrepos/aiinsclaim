@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "@/lib/db/client";
 import {
   ruleActions,
@@ -74,13 +74,17 @@ async function loadActiveVersion(db: Db, code: string, asOfStr: string) {
     .where(
       and(
         eq(ruleSetVersions.ruleSetId, set.id),
-        eq(ruleSetVersions.status, "active"),
+        inArray(ruleSetVersions.status, ["active", "retired"]),
         lte(ruleSetVersions.effectiveFrom, asOfStr),
         or(
           isNull(ruleSetVersions.effectiveTo),
           gt(ruleSetVersions.effectiveTo, asOfStr),
         ),
       ),
+    )
+    .orderBy(
+      desc(ruleSetVersions.effectiveFrom),
+      desc(ruleSetVersions.version),
     )
     .limit(1);
 
