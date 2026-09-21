@@ -15,8 +15,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx seed/index.ts",
-    "seed:rules": "echo \"Rules seed — implement in PBI-005\"",
-    "seed:demo": "echo \"Demo seed — implement in PBI-005\"",
+    "seed:rules": "tsx seed/rules.ts",
+    "seed:demo": "tsx seed/demo.ts",
     "docs:generate": "node scripts/generate-kb-reference.mjs",
     "docs:kb-check": "node scripts/check-kb.mjs",
     "docs:kb-test": "node --test scripts/check-kb.test.mjs",
@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
