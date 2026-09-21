@@ -4,10 +4,15 @@ import type { SessionUser } from "@/lib/auth/session";
 import type { Db } from "@/lib/db/client";
 import {
   parameters,
+  ruleActions,
+  ruleConditions,
+  rules,
   ruleSets,
   ruleSetVersions,
   type HitPolicy,
   type ParameterValueType,
+  type RuleActionType,
+  type RuleOperator,
   type RuleVersionStatus,
 } from "@/lib/db/schema";
 
@@ -115,6 +120,77 @@ export async function insertParameter(
       effectiveFrom: values.effectiveFrom,
       effectiveTo: values.effectiveTo,
       updatedBy: values.updatedBy,
+    })
+    .returning();
+  return row;
+}
+
+export async function insertRule(
+  db: Db,
+  user: SessionUser,
+  values: {
+    id?: string;
+    versionId: string;
+    rowOrder: number;
+    label: string;
+  },
+) {
+  assertCanWriteRules(user);
+  const [row] = await db
+    .insert(rules)
+    .values({
+      id: values.id ?? crypto.randomUUID(),
+      versionId: values.versionId,
+      rowOrder: values.rowOrder,
+      label: values.label,
+    })
+    .returning();
+  return row;
+}
+
+export async function insertRuleCondition(
+  db: Db,
+  user: SessionUser,
+  values: {
+    id?: string;
+    ruleId: string;
+    inputKey: string;
+    operator: RuleOperator;
+    valueJson: unknown;
+  },
+) {
+  assertCanWriteRules(user);
+  const [row] = await db
+    .insert(ruleConditions)
+    .values({
+      id: values.id ?? crypto.randomUUID(),
+      ruleId: values.ruleId,
+      inputKey: values.inputKey,
+      operator: values.operator,
+      valueJson: values.valueJson,
+    })
+    .returning();
+  return row;
+}
+
+export async function insertRuleAction(
+  db: Db,
+  user: SessionUser,
+  values: {
+    id?: string;
+    ruleId: string;
+    actionType: RuleActionType;
+    paramsJson: Record<string, unknown>;
+  },
+) {
+  assertCanWriteRules(user);
+  const [row] = await db
+    .insert(ruleActions)
+    .values({
+      id: values.id ?? crypto.randomUUID(),
+      ruleId: values.ruleId,
+      actionType: values.actionType,
+      paramsJson: values.paramsJson,
     })
     .returning();
   return row;

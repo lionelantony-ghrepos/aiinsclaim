@@ -1,31 +1,33 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RulesWriteForbiddenError } from "@/lib/auth/errors";
 import type { IsolatedDb } from "@/lib/db/isolated";
-import { insertParameter, insertRuleSet } from "@/lib/db/queries/rules";
+import {
+  insertParameter,
+  insertRule,
+  insertRuleAction,
+  insertRuleCondition,
+  insertRuleSet,
+} from "@/lib/db/queries/rules";
 import { USER_ROLES } from "@/lib/db/schema";
 import {
-  createTempSqlitePath,
+  createPushedClone,
   openPushedDb,
   removeTempDir,
-  runDrizzlePush,
 } from "../helpers/isolated-db";
 import { sessionUser } from "../helpers/pbi-004-fixtures";
 
-const temp = createTempSqlitePath();
+let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
 
 describe("TC-004-03 admin-only rules writes", () => {
   beforeAll(() => {
-    const pushed = runDrizzlePush(temp.file);
-    if (pushed.status !== 0) {
-      throw new Error(`${pushed.error ?? ""}\n${pushed.stderr}\n${pushed.stdout}`);
-    }
+    temp = createPushedClone();
     isolated = openPushedDb(temp.file);
-  }, 60_000);
+  }, 180_000);
 
   afterAll(() => {
     isolated?.close();
-    removeTempDir(temp.dir);
+    if (temp?.dir) removeTempDir(temp.dir);
   });
 
   it("rejects rules and parameters writes for every role except admin", async () => {
@@ -46,6 +48,31 @@ describe("TC-004-03 admin-only rules writes", () => {
           valueJson: true,
           valueType: "boolean",
           effectiveFrom: "2026-01-01",
+        }),
+      ).rejects.toBeInstanceOf(RulesWriteForbiddenError);
+
+      await expect(
+        insertRule(isolated.db, user, {
+          versionId: crypto.randomUUID(),
+          rowOrder: 1,
+          label: "Forbidden",
+        }),
+      ).rejects.toBeInstanceOf(RulesWriteForbiddenError);
+
+      await expect(
+        insertRuleCondition(isolated.db, user, {
+          ruleId: crypto.randomUUID(),
+          inputKey: "x",
+          operator: "eq",
+          valueJson: 1,
+        }),
+      ).rejects.toBeInstanceOf(RulesWriteForbiddenError);
+
+      await expect(
+        insertRuleAction(isolated.db, user, {
+          ruleId: crypto.randomUUID(),
+          actionType: "set_output",
+          paramsJson: {},
         }),
       ).rejects.toBeInstanceOf(RulesWriteForbiddenError);
     }

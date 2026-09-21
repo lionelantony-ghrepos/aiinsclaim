@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { ensureAppendOnlyTriggers } from "./append-only-triggers";
 import type { Db } from "./client";
 import * as schema from "./schema";
 
@@ -12,6 +13,7 @@ export type IsolatedDb = {
 export function openIsolatedDb(filePath?: string): IsolatedDb {
   const sqlite = new Database(filePath ?? ":memory:");
   sqlite.pragma("foreign_keys = ON");
+  ensureAppendOnlyTriggers(sqlite);
   const db = drizzle(sqlite, { schema }) as Db;
   return {
     sqlite,

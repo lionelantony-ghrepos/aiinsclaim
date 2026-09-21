@@ -1,29 +1,29 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canAccessClaim } from "@/lib/auth/scope";
 import type { IsolatedDb } from "@/lib/db/isolated";
 import { getClaimForUser, listClaimsForUser } from "@/lib/db/queries/claims";
+import { listDocumentsForUser } from "@/lib/db/queries/documents";
+import { listNotificationsForUser } from "@/lib/db/queries/notifications";
+import { documents, notifications } from "@/lib/db/schema";
 import {
-  createTempSqlitePath,
+  createPushedClone,
   openPushedDb,
   removeTempDir,
-  runDrizzlePush,
 } from "../helpers/isolated-db";
 import { seedTwoClaimantClaims } from "../helpers/pbi-004-fixtures";
 
-const temp = createTempSqlitePath();
+let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
 
 describe("TC-004-02 claimant claim scope", () => {
   beforeAll(() => {
-    const pushed = runDrizzlePush(temp.file);
-    if (pushed.status !== 0) {
-      throw new Error(`${pushed.error ?? ""}\n${pushed.stderr}\n${pushed.stdout}`);
-    }
+    temp = createPushedClone();
     isolated = openPushedDb(temp.file);
-  }, 60_000);
+  }, 180_000);
 
   afterAll(() => {
     isolated?.close();
-    removeTempDir(temp.dir);
+    if (temp?.dir) removeTempDir(temp.dir);
   });
 
   it("returns zero rows when claimant A queries claimant B claims", async () => {
@@ -36,8 +36,68 @@ describe("TC-004-02 claimant claim scope", () => {
     expect(forA.map((row) => row.id)).toEqual([fixture.claimAId]);
     expect(forB.map((row) => row.id)).toEqual([fixture.claimBId]);
     expect(await getClaimForUser(isolated.db, fixture.userA, fixture.claimBId)).toBeNull();
+    expect(await canAccessClaim(isolated.db, fixture.userA, fixture.claimBId)).toBe(false);
+    expect(await canAccessClaim(isolated.db, fixture.userA, fixture.claimAId)).toBe(true);
+    expect(await canAccessClaim(isolated.db, fixture.adjuster, fixture.claimBId)).toBe(true);
+    expect(
+      await canAccessClaim(isolated.db, fixture.adjuster, crypto.randomUUID()),
+    ).toBe(false);
 
     const staffIds = forStaff.map((row) => row.id).sort();
     expect(staffIds).toEqual([fixture.claimAId, fixture.claimBId].sort());
+
+    const now = new Date();
+    await isolated.db.insert(documents).values([
+      {
+        id: crypto.randomUUID(),
+        claimId: fixture.claimAId,
+        docType: "photo",
+        storagePath: "a.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1,
+        uploadedBy: fixture.userA.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        claimId: fixture.claimBId,
+        docType: "photo",
+        storagePath: "b.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1,
+        uploadedBy: fixture.userB.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    expect(
+      await listDocumentsForUser(isolated.db, fixture.userA, fixture.claimBId),
+    ).toEqual([]);
+    expect(
+      (await listDocumentsForUser(isolated.db, fixture.userA, fixture.claimAId))
+        .length,
+    ).toBe(1);
+
+    await isolated.db.insert(notifications).values([
+      {
+        id: crypto.randomUUID(),
+        userId: fixture.userA.id,
+        kind: "info",
+        title: "A",
+        bodyMd: "for A",
+        createdAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        userId: fixture.userB.id,
+        kind: "info",
+        title: "B",
+        bodyMd: "for B",
+        createdAt: now,
+      },
+    ]);
+    const notesA = await listNotificationsForUser(isolated.db, fixture.userA);
+    expect(notesA.map((row) => row.title)).toEqual(["A"]);
   });
 });

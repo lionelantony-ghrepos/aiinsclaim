@@ -1,5 +1,4 @@
 export {
-  AccessDeniedError,
   AppendOnlyViolationError,
   RulesWriteForbiddenError,
   TaskResolutionReasonRequiredError,
@@ -13,7 +12,7 @@ export {
 export {
   assertCanWriteRules,
   canAccessClaim,
+  canWriteClaim,
   claimantClaimsFilter,
   isStaffRole,
-  staffClaimFilter,
 } from "./scope";

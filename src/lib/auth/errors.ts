@@ -1,10 +1,3 @@
-export class AccessDeniedError extends Error {
-  constructor(message = "Access denied") {
-    super(message);
-    this.name = "AccessDeniedError";
-  }
-}
-
 export class RulesWriteForbiddenError extends Error {
   constructor(message = "Only admin can write rules tables") {
     super(message);

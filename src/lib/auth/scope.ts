@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getDb, type Db } from "@/lib/db/client";
+import type { Db } from "@/lib/db/client";
 import { claimParties, claims, parties } from "@/lib/db/schema";
 import type { UserRole } from "@/lib/db/schema/enums";
 import { RulesWriteForbiddenError } from "./errors";
@@ -22,26 +22,45 @@ export function claimantClaimsFilter(user: SessionUser) {
   return eq(parties.userId, user.id);
 }
 
-export function staffClaimFilter(user: SessionUser) {
-  if (isStaffRole(user.role)) {
-    return undefined;
-  }
-  return claimantClaimsFilter(user);
-}
-
 export function assertCanWriteRules(user: SessionUser) {
   if (user.role !== "admin") {
     throw new RulesWriteForbiddenError();
   }
 }
 
+type ClaimWriteFields = {
+  assignedTo: string | null;
+  siuReferred: boolean;
+};
+
+/** Staff writes: admin/supervisor all; adjuster/intake assigned; SIU referred claims. */
+export function canWriteClaim(user: SessionUser, claim: ClaimWriteFields) {
+  switch (user.role) {
+    case "admin":
+    case "supervisor":
+      return true;
+    case "adjuster":
+    case "intake_agent":
+      return claim.assignedTo === user.id;
+    case "siu_analyst":
+      return claim.siuReferred;
+    default:
+      return false;
+  }
+}
+
 export async function canAccessClaim(
+  db: Db,
   user: SessionUser,
   claimId: string,
-  db: Db = getDb(),
 ) {
   if (isStaffRole(user.role)) {
-    return true;
+    const [row] = await db
+      .select({ id: claims.id })
+      .from(claims)
+      .where(eq(claims.id, claimId))
+      .limit(1);
+    return Boolean(row);
   }
 
   const [row] = await db

@@ -3,28 +3,24 @@ import { TaskResolutionReasonRequiredError } from "@/lib/auth/errors";
 import type { IsolatedDb } from "@/lib/db/isolated";
 import { insertTask, updateTask } from "@/lib/db/queries/tasks";
 import {
-  createTempSqlitePath,
+  createPushedClone,
   openPushedDb,
   removeTempDir,
-  runDrizzlePush,
 } from "../helpers/isolated-db";
 import { insertMinimalClaim } from "../helpers/pbi-004-fixtures";
 
-const temp = createTempSqlitePath();
+let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
 
 describe("TC-004-05 task resolution_reason", () => {
   beforeAll(() => {
-    const pushed = runDrizzlePush(temp.file);
-    if (pushed.status !== 0) {
-      throw new Error(`${pushed.error ?? ""}\n${pushed.stderr}\n${pushed.stdout}`);
-    }
+    temp = createPushedClone();
     isolated = openPushedDb(temp.file);
-  }, 60_000);
+  }, 180_000);
 
   afterAll(() => {
     isolated?.close();
-    removeTempDir(temp.dir);
+    if (temp?.dir) removeTempDir(temp.dir);
   });
 
   it("rejects override/reject without a non-empty reason and accepts valid resolutions", async () => {

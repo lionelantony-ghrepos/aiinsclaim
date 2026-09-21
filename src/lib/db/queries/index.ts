@@ -18,6 +18,9 @@ export { listNotificationsForUser } from "./notifications";
 export {
   deleteRuleSet,
   insertParameter,
+  insertRule,
+  insertRuleAction,
+  insertRuleCondition,
   insertRuleSet,
   insertRuleSetVersion,
   updateRuleSet,

@@ -65,6 +65,6 @@ describe("TC-004-01 schema push", () => {
         sqlite.close();
       }
     },
-    60_000,
+    180_000,
   );
 });

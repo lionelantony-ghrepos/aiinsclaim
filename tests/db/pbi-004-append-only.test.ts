@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppendOnlyViolationError } from "@/lib/auth/errors";
 import {
@@ -17,28 +18,39 @@ import {
 import type { IsolatedDb } from "@/lib/db/isolated";
 import { insertRuleSet, insertRuleSetVersion } from "@/lib/db/queries/rules";
 import {
-  createTempSqlitePath,
+  agentRuns,
+  auditLog,
+  claimStateHistory,
+  ruleAuditLog,
+} from "@/lib/db/schema";
+import {
+  createPushedClone,
   openPushedDb,
   removeTempDir,
-  runDrizzlePush,
 } from "../helpers/isolated-db";
 import { insertMinimalClaim, sessionUser } from "../helpers/pbi-004-fixtures";
 
-const temp = createTempSqlitePath();
+let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
+
+async function expectAppendOnlyRejected(work: () => Promise<unknown>) {
+  try {
+    await work();
+    expect.fail("expected append-only rejection");
+  } catch (error) {
+    expect(String(error)).toMatch(/append-only/i);
+  }
+}
 
 describe("TC-004-04 append-only tables", () => {
   beforeAll(() => {
-    const pushed = runDrizzlePush(temp.file);
-    if (pushed.status !== 0) {
-      throw new Error(`${pushed.error ?? ""}\n${pushed.stderr}\n${pushed.stdout}`);
-    }
+    temp = createPushedClone();
     isolated = openPushedDb(temp.file);
-  }, 60_000);
+  }, 180_000);
 
   afterAll(() => {
     isolated?.close();
-    removeTempDir(temp.dir);
+    if (temp?.dir) removeTempDir(temp.dir);
   });
 
   it("allows insert and rejects update/delete on all four append-only tables", async () => {
@@ -63,6 +75,17 @@ describe("TC-004-04 append-only tables", () => {
     expect(history.id).toBeTruthy();
     expect(() => updateClaimStateHistory()).toThrow(AppendOnlyViolationError);
     expect(() => deleteClaimStateHistory()).toThrow(AppendOnlyViolationError);
+    await expectAppendOnlyRejected(() =>
+      isolated.db
+        .update(claimStateHistory)
+        .set({ reason: "mutated" })
+        .where(eq(claimStateHistory.id, history.id)),
+    );
+    await expectAppendOnlyRejected(() =>
+      isolated.db
+        .delete(claimStateHistory)
+        .where(eq(claimStateHistory.id, history.id)),
+    );
 
     const audit = await insertRuleAuditLog(isolated.db, {
       versionId: version.id,
@@ -75,6 +98,15 @@ describe("TC-004-04 append-only tables", () => {
     expect(audit.id).toBeTruthy();
     expect(() => updateRuleAuditLog()).toThrow(AppendOnlyViolationError);
     expect(() => deleteRuleAuditLog()).toThrow(AppendOnlyViolationError);
+    await expectAppendOnlyRejected(() =>
+      isolated.db
+        .update(ruleAuditLog)
+        .set({ actor: "mutated" })
+        .where(eq(ruleAuditLog.id, audit.id)),
+    );
+    await expectAppendOnlyRejected(() =>
+      isolated.db.delete(ruleAuditLog).where(eq(ruleAuditLog.id, audit.id)),
+    );
 
     const run = await insertAgentRun(isolated.db, {
       agentId: "intake",
@@ -83,6 +115,15 @@ describe("TC-004-04 append-only tables", () => {
     expect(run.id).toBeTruthy();
     expect(() => updateAgentRun()).toThrow(AppendOnlyViolationError);
     expect(() => deleteAgentRun()).toThrow(AppendOnlyViolationError);
+    await expectAppendOnlyRejected(() =>
+      isolated.db
+        .update(agentRuns)
+        .set({ model: "mutated" })
+        .where(eq(agentRuns.id, run.id)),
+    );
+    await expectAppendOnlyRejected(() =>
+      isolated.db.delete(agentRuns).where(eq(agentRuns.id, run.id)),
+    );
 
     const log = await insertAuditLog(isolated.db, {
       actor: "system",
@@ -93,5 +134,14 @@ describe("TC-004-04 append-only tables", () => {
     expect(log.id).toBeTruthy();
     expect(() => updateAuditLog()).toThrow(AppendOnlyViolationError);
     expect(() => deleteAuditLog()).toThrow(AppendOnlyViolationError);
+    await expectAppendOnlyRejected(() =>
+      isolated.db
+        .update(auditLog)
+        .set({ action: "mutated" })
+        .where(eq(auditLog.id, log.id)),
+    );
+    await expectAppendOnlyRejected(() =>
+      isolated.db.delete(auditLog).where(eq(auditLog.id, log.id)),
+    );
   });
 });
