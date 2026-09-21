@@ -34,9 +34,25 @@ function docTypeForRequirement(docKey: string): DocType | null {
     contractor_report: "contractor_report",
     fire_report: "fire_report",
     inventory: "inventory",
+    contents_inventory: "inventory",
+    stolen_items_inventory: "inventory",
     ownership_proof: "ownership_proof",
   };
   return map[docKey] ?? null;
+}
+
+function readIncidentLocationFlag(
+  claim: Awaited<ReturnType<typeof loadClaimContext>>["claim"],
+  ...keys: string[]
+): boolean {
+  const location = claim.incidentLocationJson;
+  if (!location || typeof location !== "object") {
+    return false;
+  }
+  return keys.some((key) => {
+    const value = location[key];
+    return value === true || (typeof value === "string" && value.trim().length > 0);
+  });
 }
 
 async function loadClaimContext(db: Db, claimId: string) {
@@ -75,11 +91,19 @@ function checkFieldRequirement(
     case "police_report_number":
       return Boolean(claim.policeReportNumber?.trim());
     case "fire_service_ref":
-      return Boolean(
-        claim.incidentLocationJson &&
-          typeof claim.incidentLocationJson === "object" &&
-          "fireServiceRef" in claim.incidentLocationJson &&
-          claim.incidentLocationJson.fireServiceRef,
+    case "fire_service_reference":
+      return readIncidentLocationFlag(
+        claim,
+        "fireServiceRef",
+        "fireServiceReference",
+        "fire_service_reference",
+      );
+    case "incident_date_in_storm_window":
+      return readIncidentLocationFlag(
+        claim,
+        "incidentDateInStormWindow",
+        "stormWindowVerified",
+        "incident_date_in_storm_window",
       );
     default:
       return false;

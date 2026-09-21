@@ -123,10 +123,6 @@ export async function transitionClaim(
   }
 
   const now = new Date();
-  await db
-    .update(claims)
-    .set({ status: params.toStatus, updatedAt: now })
-    .where(eq(claims.id, params.claimId));
 
   const history = await insertClaimStateHistory(db, {
     claimId: params.claimId,
@@ -137,6 +133,11 @@ export async function transitionClaim(
     reason: params.reason,
     ruleAuditId: ruleAuditId ?? null,
   });
+
+  await db
+    .update(claims)
+    .set({ status: params.toStatus, updatedAt: now })
+    .where(eq(claims.id, params.claimId));
 
   return {
     claimId: params.claimId,
