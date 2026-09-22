@@ -18,12 +18,17 @@ import {
 } from "@/lib/schemas/agents/triage";
 import { resolveAdjusterId } from "@/lib/triage/assign";
 import {
-  buildFraudStubInputs,
+  buildFraudInputsFromClaim,
+  runFraudAgent,
+} from "@/lib/agents/fraud";
+import {
+  buildFraudInputs,
   buildStpInputs,
   countClaimantPriorClaims12m,
   loadClaimWithPolicy,
   loadLatestExtractionFields,
 } from "@/lib/triage/inputs";
+import type { FraudBand } from "@/lib/db/schema/enums";
 import { transitionClaim } from "@/lib/state-machine";
 import { TriageSchemaError } from "./errors";
 import { callAiGateway } from "./gateway";
@@ -246,24 +251,47 @@ export async function triageClaim(
     assignOutputs: assignResult.outputs,
   });
 
-  const fraudInputs = await buildFraudStubInputs(
-    db,
-    claimId,
-    claim,
-    priorClaims12m,
-  );
+  const {
+    output: fraudAgentOutput,
+    agentRunId: fraudAgentRunId,
+    agentFailed: fraudAgentFailed,
+  } = await runFraudAgent(db, await buildFraudInputsFromClaim(db, claimId));
+
+  const fraudInputs = await buildFraudInputs(db, claimId, claim, priorClaims12m, {
+    narrativeInconsistency: fraudAgentOutput?.narrativeInconsistency ?? 0,
+    docAnomaly: fraudAgentOutput?.docAnomaly ?? 0,
+  });
   const fraudResult = await evaluateRuleSet(db, "BR-FRAUD-001", fraudInputs, {
     claimId,
-    actor: "triage:fraud-stub",
+    actor: `agent:${fraudAgentFailed ? "AGT-FRAUD-fallback" : "AGT-FRAUD"}`,
+  });
+
+  const fraudBand =
+    (fraudResult.outputs.fraud_band as FraudBand | undefined) ?? "low";
+
+  await executeFraudBandingActions(db, claimId, fraudResult.outputs, {
+    trigger: options?.trigger ?? "initial",
   });
 
   await db.insert(fraudScores).values({
     id: crypto.randomUUID(),
     claimId,
+    agentRunId: fraudAgentRunId,
     score: Number(fraudResult.outputs.fraud_score ?? 0),
-    band: (fraudResult.outputs.fraud_band as "low" | "medium" | "high" | "critical") ?? "low",
+    band: fraudBand,
     reasonCodes: (fraudResult.outputs.reason_codes as string[]) ?? [],
-    signalsJson: { stub: true, trigger: options?.trigger ?? "initial" },
+    signalsJson: {
+      inputs: fraudInputs,
+      agentSignals: fraudAgentOutput ?? {
+        narrativeInconsistency: 0,
+        docAnomaly: 0,
+        evidence: [],
+        confidence: 0,
+      },
+      scoreBreakdown: fraudResult.outputs.score_breakdown ?? [],
+      trigger: options?.trigger ?? "initial",
+      agentFailed: fraudAgentFailed,
+    },
     ruleAuditId: fraudResult.auditId,
   });
 
@@ -412,6 +440,38 @@ export async function triageClaim(
       stp: stpAuditId,
     },
   };
+}
+
+async function executeFraudBandingActions(
+  db: Db,
+  claimId: string,
+  outputs: Record<string, unknown>,
+  context: { trigger: string },
+) {
+  const band = outputs.fraud_band as FraudBand | undefined;
+  const tasks = (outputs.tasks as
+    | { type: string; queue: string; priority: number }[]
+    | undefined) ?? [];
+
+  if (outputs.siu_referred === true || band === "critical") {
+    await db
+      .update(claims)
+      .set({ siuReferred: true, updatedAt: new Date() })
+      .where(eq(claims.id, claimId));
+  }
+
+  for (const taskSpec of tasks) {
+    await insertTask(db, {
+      claimId,
+      type: taskSpec.type as "review_fraud" | "siu_review",
+      queue: taskSpec.queue as "siu",
+      priority: taskSpec.priority,
+      payloadJson: {
+        fraudBand: band,
+        trigger: context.trigger,
+      },
+    });
+  }
 }
 
 function skipResult(

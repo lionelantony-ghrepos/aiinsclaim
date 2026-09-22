@@ -107,11 +107,20 @@ export async function buildStpInputs(
   };
 }
 
-export async function buildFraudStubInputs(
+function incidentTimeBand(incidentAt: Date): "day" | "night" {
+  const hour = incidentAt.getHours();
+  return hour >= 22 || hour < 6 ? "night" : "day";
+}
+
+export async function buildFraudInputs(
   db: Db,
   claimId: string,
   claim: Awaited<ReturnType<typeof loadClaimWithPolicy>>["claim"],
   priorClaims12m: number,
+  agentSignals?: {
+    narrativeInconsistency?: number;
+    docAnomaly?: number;
+  },
 ) {
   const { policy } = await loadClaimWithPolicy(db, claimId);
   const policyStart = new Date(policy.effectiveFrom).getTime();
@@ -137,12 +146,22 @@ export async function buildFraudStubInputs(
     claimant_prior_claims_12m: priorClaims12m,
     amount_vs_coverage_ratio:
       coverageLimit > 0 ? estimated / coverageLimit : 0,
-    narrative_inconsistency: 0,
-    doc_anomaly: 0,
-    incident_time_band: "day" as const,
+    narrative_inconsistency: agentSignals?.narrativeInconsistency ?? 0,
+    doc_anomaly: agentSignals?.docAnomaly ?? 0,
+    incident_time_band: incidentTimeBand(claim.incidentAt),
     police_report_present: claim.policeReportPresent,
     claim_type: claim.claimType,
   };
+}
+
+/** @deprecated Use buildFraudInputs — kept for backward-compatible tests. */
+export async function buildFraudStubInputs(
+  db: Db,
+  claimId: string,
+  claim: Awaited<ReturnType<typeof loadClaimWithPolicy>>["claim"],
+  priorClaims12m: number,
+) {
+  return buildFraudInputs(db, claimId, claim, priorClaims12m);
 }
 
 export async function loadClaimantPartyId(db: Db, claimId: string) {

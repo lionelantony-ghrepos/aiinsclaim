@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { FraudPanel } from "@/components/claims/fraud-panel";
 import { TriageCard } from "@/components/claims/triage-card";
 import { ClaimStatusTimeline } from "@/components/claim-status-timeline";
 import { requireRole } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { getClaimForUser } from "@/lib/db/queries/claims";
+import { getLatestFraudScore } from "@/lib/db/queries/fraud-read";
 import { getTriageSummary } from "@/lib/db/queries/triage-read";
-import type { ClaimStatus } from "@/lib/db/schema";
+import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
 
 const TIMELINE_STEPS: { id: string; label: string; status: ClaimStatus }[] = [
   { id: "draft", label: "Draft", status: "draft" },
@@ -45,6 +47,7 @@ export default async function StaffClaimDetailPage({
     "intake_agent",
     "adjuster",
     "supervisor",
+    "siu_analyst",
     "admin",
   );
   const { id: claimId } = await params;
@@ -56,6 +59,13 @@ export default async function StaffClaimDetailPage({
   }
 
   const triage = await getTriageSummary(db, claimId);
+  const fraudScore = await getLatestFraudScore(db, claimId);
+  const signalsJson = (fraudScore?.signalsJson ?? {}) as {
+    scoreBreakdown?: { points: number; reasonCode?: string }[];
+    agentSignals?: {
+      evidence?: { signal: string; quote: string; source: string }[];
+    };
+  };
   const stpBlockReason =
     typeof triage.stpAudit?.outputs.reason_code === "string" &&
     triage.stpAudit.outputs.stp_allowed === false
@@ -95,6 +105,21 @@ export default async function StaffClaimDetailPage({
         stpBlockReason={stpBlockReason}
         matchedTriageRules={triage.triageAudit?.matchedRuleIds ?? []}
       />
+
+      {fraudScore ? (
+        <FraudPanel
+          claimId={claim.id}
+          claimNumber={claim.claimNumber}
+          band={fraudScore.band as FraudBand}
+          score={fraudScore.score}
+          reasonCodes={fraudScore.reasonCodes}
+          scoreBreakdown={signalsJson.scoreBreakdown ?? []}
+          evidence={signalsJson.agentSignals?.evidence ?? []}
+          siuDisposition={(claim.siuDisposition as SiuDisposition | null) ?? null}
+          siuReferred={claim.siuReferred}
+          userRole={user.role}
+        />
+      ) : null}
     </div>
   );
 }

@@ -12,6 +12,12 @@ import {
   type IntakeAgentOutput,
 } from "@/lib/schemas/agents/intake";
 import {
+  FraudAgentInputSchema,
+  FraudAgentOutputSchema,
+  type FraudAgentInput,
+  type FraudAgentOutput,
+} from "@/lib/schemas/agents/fraud";
+import {
   TriageAgentInputSchema,
   TriageAgentOutputSchema,
   type TriageAgentInput,
@@ -282,6 +288,26 @@ export async function callAiGateway(
     };
   }
 
+  if (request.agentId === "AGT-FRAUD") {
+    const parsedInput = FraudAgentInputSchema.parse(request.input);
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          FraudAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        // Silent degrade to deterministic mock per AGENT-OPS.
+      }
+    }
+
+    return {
+      output: mockFraudResponse(parsedInput),
+      model: "mock:agt-fraud-v1",
+      latencyMs: 1,
+    };
+  }
+
   if (request.agentId === "AGT-TRIAGE") {
     const parsedInput = TriageAgentInputSchema.parse(request.input);
 
@@ -311,6 +337,56 @@ export async function callAiGateway(
   }
 
   throw new Error(`Unsupported agent: ${request.agentId}`);
+}
+
+function mockFraudResponse(input: FraudAgentInput): FraudAgentOutput {
+  const narrativeWords = wordCount(input.narrative);
+  const narrativeComplex =
+    narrativeWords > 50 ||
+    /contradict|inconsistent|discrepanc/i.test(input.narrative);
+
+  const extractedValues = Object.values(input.extractedDocFields ?? {});
+  const suspiciousDoc = extractedValues.some((value) => {
+    const text = JSON.stringify(value).toLowerCase();
+    return /suspicious|anomal|tamper|forged|altered/.test(text);
+  });
+
+  if (narrativeComplex) {
+    return FraudAgentOutputSchema.parse({
+      narrativeInconsistency: 0.7,
+      docAnomaly: suspiciousDoc ? 0.7 : 0,
+      evidence: [
+        {
+          signal: "NARRATIVE_INCONSISTENCY",
+          quote: input.narrative.slice(0, 120) || "Complex narrative pattern",
+          source: "narrative",
+        },
+      ],
+      confidence: 0.85,
+    });
+  }
+
+  if (suspiciousDoc) {
+    return FraudAgentOutputSchema.parse({
+      narrativeInconsistency: 0.1,
+      docAnomaly: 0.7,
+      evidence: [
+        {
+          signal: "DOC_ANOMALY",
+          quote: "Suspicious field pattern in extracted document",
+          source: "narrative",
+        },
+      ],
+      confidence: 0.8,
+    });
+  }
+
+  return FraudAgentOutputSchema.parse({
+    narrativeInconsistency: 0.1,
+    docAnomaly: 0,
+    evidence: [],
+    confidence: 0.9,
+  });
 }
 
 function mockTriageResponse(input: TriageAgentInput): TriageAgentOutput {

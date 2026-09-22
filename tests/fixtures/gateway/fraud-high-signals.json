@@ -1,0 +1,12 @@
+{
+  "narrativeInconsistency": 0.7,
+  "docAnomaly": 0.0,
+  "evidence": [
+    {
+      "signal": "NARRATIVE_INCONSISTENCY",
+      "quote": "Timeline contradicts police report timestamp",
+      "source": "narrative"
+    }
+  ],
+  "confidence": 0.85
+}
