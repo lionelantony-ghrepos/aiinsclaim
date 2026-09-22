@@ -1,6 +1,11 @@
 import type { Page } from "@playwright/test";
 import { DEMO_PASSWORD } from "@/lib/auth/demo-accounts";
 
+export async function signOut(page: Page) {
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+}
+
 export async function loginAs(
   page: Page,
   email: string,

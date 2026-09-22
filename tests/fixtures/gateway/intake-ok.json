@@ -1,0 +1,15 @@
+{
+  "model": "mock:agt-intake-v1",
+  "latencyMs": 1,
+  "output": {
+    "summaryDraft": "Draft summary (collision/auto): Rear-end collision at intersection with moderate vehicle damage.",
+    "completenessHints": [
+      {
+        "field": "{\"doc\":\"photos\",\"min\":2}",
+        "hint": "Provide photos to complete FNOL.",
+        "severity": "warning"
+      }
+    ],
+    "confidence": 0.55
+  }
+}
