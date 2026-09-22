@@ -4,6 +4,12 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SettlementChecklistItem } from "@/lib/assessment/checklist";
 import { CompleteAssessmentButton, RequestInfoForm } from "./assessment-actions";
 import { ReserveWorkbench } from "./reserve-workbench";
+import {
+  SettlementWorkbench,
+  type PaymentRow,
+  type SettlementItemInput,
+  type SettlementRow,
+} from "./settlement-workbench";
 
 export type ReserveRow = {
   id: string;
@@ -19,11 +25,23 @@ export function FinancialsPanel({
   claimStatus,
   reserves,
   checklist,
+  settlementItems,
+  deductibleDefault,
+  settlements,
+  payments,
+  openTaskCount,
+  denialReasonCodes,
 }: {
   claimId: string;
   claimStatus: string;
   reserves: ReserveRow[];
   checklist: SettlementChecklistItem[];
+  settlementItems: SettlementItemInput[];
+  deductibleDefault: string;
+  settlements: SettlementRow[];
+  payments: PaymentRow[];
+  openTaskCount: number;
+  denialReasonCodes: string[];
 }) {
   const latestIndemnity = reserves.find((row) => row.kind === "indemnity") ?? null;
   const latestExpense = reserves.find((row) => row.kind === "expense") ?? null;
@@ -104,6 +122,17 @@ export function FinancialsPanel({
         <RequestInfoForm claimId={claimId} canRequest={inAssessment} />
         <CompleteAssessmentButton claimId={claimId} canComplete={inAssessment} />
       </div>
+
+      <SettlementWorkbench
+        claimId={claimId}
+        claimStatus={claimStatus}
+        items={settlementItems}
+        deductibleDefault={deductibleDefault}
+        settlements={settlements}
+        payments={payments}
+        openTaskCount={openTaskCount}
+        denialReasonCodes={denialReasonCodes}
+      />
     </div>
   );
 }

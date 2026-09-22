@@ -176,7 +176,13 @@ export async function resolveTaskAction(
     if (!result.ok) {
       return {
         ok: false,
-        error: { code: result.code, message: "Unable to resolve task" },
+        error: {
+          code: result.code,
+          message:
+            "message" in result && typeof result.message === "string"
+              ? result.message
+              : "Unable to resolve task",
+        },
       };
     }
 

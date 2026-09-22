@@ -38,12 +38,18 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
     optimisticTask.payloadJson,
     optimisticTask.title,
   );
+  const payload = (optimisticTask.payloadJson ?? {}) as Record<string, unknown>;
+  const isSettlementApproval =
+    optimisticTask.type === "approve_settlement" ||
+    payload.kind === "approve_settlement";
+  const isDenyConfirmation = payload.kind === "deny_confirmation";
+  const isSupervisionFinancial = isSettlementApproval || isDenyConfirmation;
   const isResolved =
     optimisticTask.status === "done" || optimisticTask.status === "cancelled";
 
   const resolveMutation = useMutation({
     mutationFn: async (input: {
-      resolution: "accepted" | "overridden";
+      resolution: "accepted" | "overridden" | "rejected";
       resolutionReason?: string;
     }) => {
       const result = await resolveTaskAction({
@@ -70,8 +76,12 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
     onSuccess: (_data, input) => {
       setStatusMessage(
         input.resolution === "accepted"
-          ? "Proposal accepted."
-          : "Proposal overridden.",
+          ? isSupervisionFinancial
+            ? "Supervision decision accepted."
+            : "Proposal accepted."
+          : input.resolution === "rejected"
+            ? "Proposal rejected."
+            : "Proposal overridden.",
       );
     },
     onSettled: () => {
@@ -251,7 +261,93 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
         </Card>
       </div>
 
-      {proposal && !isResolved ? (
+      {isSettlementApproval && !isResolved ? (
+        <Card data-testid="settlement-approval-panel">
+          <CardHeader>
+            <CardTitle>Settlement approval</CardTitle>
+            <p className="text-sm text-text-muted">
+              Review the proposed settlement and approve or reject with a reason.
+            </p>
+          </CardHeader>
+          <dl className="grid gap-3 px-6 pb-4 text-sm">
+            <div>
+              <dt className="text-text-muted">Amount</dt>
+              <dd className="font-mono" data-testid="settlement-approval-amount">
+                {typeof payload.amount === "string" ? payload.amount : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Settlement ID</dt>
+              <dd className="font-mono text-xs">
+                {typeof payload.settlementId === "string"
+                  ? payload.settlementId
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
+          <div className="flex flex-wrap gap-2 px-6 pb-6">
+            <Button
+              onClick={() => resolveMutation.mutate({ resolution: "accepted" })}
+              disabled={pending}
+              data-testid="settlement-approval-accept"
+            >
+              Approve settlement
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setOverrideOpen(true)}
+              disabled={pending}
+              data-testid="settlement-approval-reject"
+            >
+              Reject
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {isDenyConfirmation && !isResolved ? (
+        <Card data-testid="deny-confirmation-panel">
+          <CardHeader>
+            <CardTitle>Denial confirmation</CardTitle>
+            <p className="text-sm text-text-muted">
+              Confirm or reject the proposed claim denial.
+            </p>
+          </CardHeader>
+          <dl className="grid gap-3 px-6 pb-4 text-sm">
+            <div>
+              <dt className="text-text-muted">Reason code</dt>
+              <dd data-testid="deny-confirmation-reason">
+                {typeof payload.reasonCode === "string" ? payload.reasonCode : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Note</dt>
+              <dd data-testid="deny-confirmation-note">
+                {typeof payload.note === "string" ? payload.note : "—"}
+              </dd>
+            </div>
+          </dl>
+          <div className="flex flex-wrap gap-2 px-6 pb-6">
+            <Button
+              onClick={() => resolveMutation.mutate({ resolution: "accepted" })}
+              disabled={pending}
+              data-testid="deny-confirmation-accept"
+            >
+              Confirm denial
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setOverrideOpen(true)}
+              disabled={pending}
+              data-testid="deny-confirmation-reject"
+            >
+              Reject
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {proposal && !isResolved && !isSupervisionFinancial ? (
         <AgentProposalCard
           title={proposal.title}
           summary={proposal.summary}
@@ -281,11 +377,17 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
 
       <ResolveDialog
         open={overrideOpen}
-        title="Override agent proposal"
+        title={
+          isSupervisionFinancial
+            ? isDenyConfirmation
+              ? "Reject denial"
+              : "Reject settlement"
+            : "Override agent proposal"
+        }
         onClose={() => setOverrideOpen(false)}
         onSubmit={async (reason) => {
           await resolveMutation.mutateAsync({
-            resolution: "overridden",
+            resolution: isSupervisionFinancial ? "rejected" : "overridden",
             resolutionReason: reason,
           });
         }}

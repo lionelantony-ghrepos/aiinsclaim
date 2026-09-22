@@ -140,6 +140,9 @@ claim_id, agent_run_id nullable, score int, band enum (low, medium, high, critic
 ### reserves
 claim_id, kind enum (indemnity, expense), amount, set_by, source enum (agent_suggested, manual), supersedes_id FK self nullable (history chain), approval_task_id nullable.
 
+### settlements
+claim_id, items_json (array of `{ claimItemId, amount }`), deductible_applied, total_amount, note nullable, status enum (`proposed`, `pending_approval`, `approved`, `rejected`), proposed_by, authority_rule_audit_id FK nullable, created_at, updated_at.
+
 ### payments
 claim_id, payee_party_id, amount, method enum (ach_mock, check_mock), status enum (pending, issued, failed), reference text, approved_by, authority_rule_audit_id FK.
 

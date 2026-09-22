@@ -123,6 +123,18 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     description: "Level 3 settlement authority max",
   },
   {
+    key: "denial.reason_codes",
+    valueJson: [
+      "COVERAGE_EXCLUDED",
+      "POLICY_LAPSED",
+      "FRAUD_CONFIRMED",
+      "EXCLUSION_APPLIES",
+      "OTHER",
+    ],
+    valueType: "string",
+    description: "Coded denial reason list for DenialReasonEnum",
+  },
+  {
     key: "sla.ack_hours",
     valueJson: "4h",
     valueType: "duration",
