@@ -11,3 +11,10 @@ export class ExtractAgentUnavailableError extends Error {
     this.name = "ExtractAgentUnavailableError";
   }
 }
+
+export class TriageSchemaError extends Error {
+  constructor(message = "Triage schema validation failed") {
+    super(message);
+    this.name = "TriageSchemaError";
+  }
+}

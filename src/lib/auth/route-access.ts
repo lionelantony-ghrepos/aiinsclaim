@@ -8,8 +8,16 @@ type RouteRule = {
 
 const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
   {
-    pattern: /^\/claims(\/|$)/,
+    pattern: /^\/claims\/?$/,
     roles: ["claimant"],
+  },
+  {
+    pattern: /^\/claims\/new(\/|$)/,
+    roles: ["claimant"],
+  },
+  {
+    pattern: /^\/claims\/[^/]+$/,
+    roles: ["intake_agent", "adjuster", "supervisor", "admin"],
   },
   {
     pattern: /^\/intake(\/|$)/,

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { canAccessClaim } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/auth/session";
 import { runIntakeAgent } from "@/lib/agents/intake";
+import { runTriageOnSubmit } from "@/lib/agents/triage";
 import { getDb } from "@/lib/db";
 import { documents } from "@/lib/db/schema";
 import {
@@ -259,6 +260,8 @@ export async function submitClaimAction(
       throw error;
     }
 
+    const triage = await runTriageOnSubmit(db, parsed.claimId, user.id);
+
     await insertClaimNotification(db, {
       userId: user.id,
       claimId: parsed.claimId,
@@ -268,13 +271,14 @@ export async function submitClaimAction(
     });
 
     revalidatePath("/claims");
+    revalidatePath(`/claims/${parsed.claimId}`);
 
     return {
       ok: true,
       data: {
         claimId: parsed.claimId,
         claimNumber: detail.claim.claimNumber,
-        status: "submitted",
+        status: triage.status,
       },
     };
   } catch (error) {

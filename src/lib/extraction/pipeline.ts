@@ -18,6 +18,7 @@ import {
   schemaIdForDocType,
 } from "@/lib/schemas/agents/extract";
 import { getParameter } from "@/lib/rules/params";
+import { retriageClaim } from "@/lib/agents/triage";
 import { applyExtractionFields } from "./apply";
 
 function queueForClaimStatus(status: ClaimStatus): TaskQueue {
@@ -81,6 +82,7 @@ export async function processDocumentExtraction(db: Db, documentId: string) {
     });
 
     if (output.minConfidence >= autoAcceptThreshold) {
+      const previousAmount = Number(claim.estimatedAmount ?? 0);
       await applyExtractionFields(db, {
         claimId: claim.id,
         docType: document.docType,
@@ -93,6 +95,11 @@ export async function processDocumentExtraction(db: Db, documentId: string) {
         .where(eq(extractions.id, extraction.id));
 
       await updateDocumentStatus(db, documentId, "verified");
+
+      await retriageClaim(db, claim.id, {
+        previousAmount,
+        trigger: "doc_applied",
+      });
 
       return {
         documentId,
@@ -237,6 +244,12 @@ export async function verifyAndApplyExtraction(
     applied: true,
   });
 
+  const [claimBeforeApply] = await db
+    .select({ estimatedAmount: claims.estimatedAmount })
+    .from(claims)
+    .where(eq(claims.id, document.claimId))
+    .limit(1);
+
   await applyExtractionFields(db, {
     claimId: document.claimId,
     docType: document.docType,
@@ -244,6 +257,11 @@ export async function verifyAndApplyExtraction(
   });
 
   await updateDocumentStatus(db, document.id, "verified");
+
+  await retriageClaim(db, document.claimId, {
+    previousAmount: Number(claimBeforeApply?.estimatedAmount ?? 0),
+    trigger: "doc_applied",
+  });
 
   return { applied: true, documentStatus: "verified" as DocStatus };
 }

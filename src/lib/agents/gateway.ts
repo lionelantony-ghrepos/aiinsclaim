@@ -11,6 +11,12 @@ import {
   type IntakeAgentInput,
   type IntakeAgentOutput,
 } from "@/lib/schemas/agents/intake";
+import {
+  TriageAgentInputSchema,
+  TriageAgentOutputSchema,
+  type TriageAgentInput,
+  type TriageAgentOutput,
+} from "@/lib/schemas/agents/triage";
 
 export type AiGatewayRequest = {
   agentId: string;
@@ -276,5 +282,79 @@ export async function callAiGateway(
     };
   }
 
+  if (request.agentId === "AGT-TRIAGE") {
+    const parsedInput = TriageAgentInputSchema.parse(request.input);
+
+    if (parsedInput.claimSnapshot.claimId.includes("schema-fail")) {
+      return {
+        output: { invalid: true },
+        model: "mock:agt-triage-v1",
+        latencyMs: 1,
+      };
+    }
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          TriageAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        // Silent degrade to deterministic mock per AGENT-OPS.
+      }
+    }
+
+    return {
+      output: mockTriageResponse(parsedInput),
+      model: "mock:agt-triage-v1",
+      latencyMs: 1,
+    };
+  }
+
   throw new Error(`Unsupported agent: ${request.agentId}`);
+}
+
+function mockTriageResponse(input: TriageAgentInput): TriageAgentOutput {
+  const { claimSnapshot } = input;
+  let severityScore = 22;
+  let complexityScore = 15;
+  const reasonCodes: string[] = [];
+  const keyRisks: string[] = [];
+
+  if (claimSnapshot.injuryInvolved) {
+    severityScore = 72;
+    complexityScore = 68;
+    reasonCodes.push("INJURY");
+    keyRisks.push("Bodily injury reported");
+  } else if (claimSnapshot.liabilityDisputed) {
+    severityScore = 55;
+    complexityScore = 62;
+    reasonCodes.push("LIABILITY");
+    keyRisks.push("Liability dispute flagged");
+  } else if (claimSnapshot.estimatedAmount > 25000) {
+    severityScore = 48;
+    complexityScore = 72;
+    reasonCodes.push("HIGH_VALUE");
+    keyRisks.push("High estimated amount");
+  } else if (claimSnapshot.estimatedAmount <= 2500) {
+    severityScore = 22;
+    complexityScore = 15;
+    reasonCodes.push("LOW_SEVERITY");
+  } else {
+    severityScore = 35;
+    complexityScore = 45;
+    reasonCodes.push("STANDARD");
+  }
+
+  if (!input.policyCoverageSummary.active) {
+    reasonCodes.push("POLICY_INACTIVE");
+    keyRisks.push("Policy not active at triage");
+  }
+
+  return TriageAgentOutputSchema.parse({
+    severityScore,
+    complexityScore,
+    reasonCodes,
+    keyRisks,
+    confidence: 0.84,
+  });
 }
