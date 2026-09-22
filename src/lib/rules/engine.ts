@@ -290,6 +290,7 @@ async function evaluateFraudRuleSet(
 
   outputs.fraud_score = totalScore;
   outputs.reason_codes = reasonCodes;
+  outputs.score_breakdown = scoreContributions;
   if (!("fraud_band" in outputs)) {
     outputs.fraud_band = "low";
   }

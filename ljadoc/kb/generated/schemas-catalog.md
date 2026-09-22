@@ -10,6 +10,10 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - agents/extract.ts: ExtractionPoliceReportSchema
 - agents/extract.ts: ExtractionRepairEstimateSchema
 - agents/extract.ts: VerifyExtractionSchema
+- agents/fraud.ts: FraudAgentInputSchema
+- agents/fraud.ts: FraudAgentOutputSchema
+- agents/fraud.ts: FraudEvidenceSchema
+- agents/fraud.ts: SetSiuDispositionSchema
 - agents/intake.ts: IntakeAgentInputSchema
 - agents/intake.ts: IntakeAgentOutputSchema
 - agents/intake.ts: IntakeChecklistStateSchema

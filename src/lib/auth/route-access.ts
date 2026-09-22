@@ -17,7 +17,11 @@ const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
   },
   {
     pattern: /^\/claims\/[^/]+$/,
-    roles: ["intake_agent", "adjuster", "supervisor", "admin"],
+    roles: ["intake_agent", "adjuster", "supervisor", "siu_analyst", "admin"],
+  },
+  {
+    pattern: /^\/siu(\/|$)/,
+    roles: ["siu_analyst", "supervisor"],
   },
   {
     pattern: /^\/intake(\/|$)/,
