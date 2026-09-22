@@ -1,7 +1,18 @@
 export {
+  AppendOnlyViolationError,
+  RulesWriteForbiddenError,
+  TaskResolutionReasonRequiredError,
+} from "./errors";
+export {
   getCurrentUser,
   getSession,
   requireRole,
   type SessionUser,
 } from "./session";
-export { canAccessClaim, staffClaimFilter } from "./scope";
+export {
+  assertCanWriteRules,
+  canAccessClaim,
+  canWriteClaim,
+  claimantClaimsFilter,
+  isStaffRole,
+} from "./scope";

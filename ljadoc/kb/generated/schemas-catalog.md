@@ -2,4 +2,12 @@
 
 Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 
-_(no schemas exported yet — PBI-009+)_
+- auth.ts: loginFormSchema
+- rules-admin.ts: RuleActionSchema
+- rules-admin.ts: RuleConditionSchema
+- rules-admin.ts: RuleRowSchema
+- rules-admin.ts: activateVersionSchema
+- rules-admin.ts: createDraftVersionSchema
+- rules-admin.ts: simulateVersionSchema
+- rules-admin.ts: updateDraftRowsSchema
+- rules-admin.ts: upsertParameterSchema
