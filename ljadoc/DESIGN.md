@@ -58,6 +58,7 @@ Business rules govern behavior at every decision point; see Business Rules Catal
 | Data fetching | TanStack Query (client) + server actions | Query for live queues/dashboards; actions for mutations |
 | Validation | Zod everywhere (API edge + forms + agent tool I/O) | Schemas in `src/lib/schemas`, shared client/server |
 | Database | SQLite + Drizzle ORM | File at `ljadev/data/aiinsclaim.db`; schema in `src/lib/db/schema/` |
+| Vector search | sqlite-vec extension | Package installed; `loadSqliteVec()` in `src/lib/db/vec.ts` for scripts/tests; app wiring deferred to RAG PBI; `vec0` tables in same SQLite file |
 | Auth | iron-session + bcrypt | Demo accounts via `npm run seed`; scope checks in `src/lib/auth/` |
 | Storage | Local filesystem | `ljadev/storage/claim-documents/` |
 | Agents | Mock agents + optional OpenAI-compatible API | §7; no cloud gateway required for learning |

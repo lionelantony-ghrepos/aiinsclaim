@@ -1,7 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { DEMO_ACCOUNT_EMAILS } from "@/lib/auth/demo-accounts";
+import { loginAs } from "./helpers/auth";
 
-test.describe.configure({ timeout: 60_000 });
+test.describe.configure({ mode: "serial", timeout: 60_000 });
+
+test.beforeEach(async ({ page }) => {
+  await loginAs(page, DEMO_ACCOUNT_EMAILS.adjuster);
+});
 
 const SIGNATURE_COMPONENTS = [
   { testId: "claim-status-timeline", name: /claim status timeline/i },
@@ -78,7 +84,7 @@ test.describe("TC-002-03 keyboard navigation on sidebar", () => {
   test("sidebar links are reachable, visibly focused, and operable via Enter", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     const nav = page.getByRole("navigation", { name: "Main" });
     const links = nav.getByRole("link");
@@ -117,7 +123,9 @@ test.describe("TC-002-03 keyboard navigation on sidebar", () => {
     const lab = nav.getByRole("link", { name: "Component lab" });
     await lab.focus();
     await expect(lab).toBeFocused();
-    await lab.press("Enter");
-    await expect(page).toHaveURL(/\/dev\/components$/);
+    await Promise.all([
+      page.waitForURL(/\/dev\/components$/),
+      lab.press("Enter"),
+    ]);
   });
 });

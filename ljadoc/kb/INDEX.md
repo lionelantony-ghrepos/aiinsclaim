@@ -15,7 +15,7 @@ Living **as-built** handbook for humans (onboarding, ops) and coding agents (lat
 | Product spec | `ljadoc/` (PRD, DESIGN, TEST-PLAN, …) | Agents + humans |
 | Engineering KB | `ljadoc/kb/` (this tree) | Agents + humans |
 | User narrative | `ljadoc/08-User-Guide.md` | End users |
-| Future claims RAG | TBD (optional) | Copilot only — **must not** ingest `ljadoc/` or `ljadoc/kb/` unless explicitly scheduled |
+| Future claims RAG | sqlite-vec in `ljadev/data/aiinsclaim.db` (optional) | Copilot only — **must not** ingest `ljadoc/` or `ljadoc/kb/` unless explicitly scheduled |
 
 ## Traceability
 
@@ -29,12 +29,12 @@ GitHub issues: [PBIs #1–20](https://github.com/lionelantony-ghrepos/aiinsclaim
 | --- | --- | --- | --- |
 | 001 | [PBI-001](as-built/PBI-001.md) | 0 | Shipped |
 | 002 | [PBI-002](as-built/PBI-002.md) | 0 | Shipped |
-| 003 | [PBI-003](as-built/PBI-003.md) | 1 | Planned |
-| 004 | [PBI-004](as-built/PBI-004.md) | 1 | Partial (schema) |
-| 005 | [PBI-005](as-built/PBI-005.md) | 1 | Partial (demo seed) |
-| 006 | [PBI-006](as-built/PBI-006.md) | 1 | Planned |
-| 007 | [PBI-007](as-built/PBI-007.md) | 1 | Planned |
-| 008 | [PBI-008](as-built/PBI-008.md) | 1 | Planned |
+| 003 | [PBI-003](as-built/PBI-003.md) | 1 | Shipped |
+| 004 | [PBI-004](as-built/PBI-004.md) | 1 | Shipped |
+| 005 | [PBI-005](as-built/PBI-005.md) | 1 | Shipped |
+| 006 | [PBI-006](as-built/PBI-006.md) | 1 | Shipped |
+| 007 | [PBI-007](as-built/PBI-007.md) | 1 | Shipped |
+| 008 | [PBI-008](as-built/PBI-008.md) | 1 | Shipped |
 | 009 | [PBI-009](as-built/PBI-009.md) | 2 | Planned |
 | 010 | [PBI-010](as-built/PBI-010.md) | 2 | Partial (storage stub) |
 | 011 | [PBI-011](as-built/PBI-011.md) | 2 | Planned |
