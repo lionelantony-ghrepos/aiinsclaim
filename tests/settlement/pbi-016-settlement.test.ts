@@ -426,6 +426,120 @@ describe("PBI-016 settlement authority & payments", () => {
       .where(eq(claims.id, fixture.claimId));
     expect(claim.status).toBe("approved");
   });
+
+  it("second approve on pending 32k settlement does not create duplicate task", async () => {
+    const adjuster = await insertStaffUser(isolated.db, {
+      role: "adjuster",
+      authorityLevel: 2,
+    });
+    const fixture = await insertSettlementClaim(isolated.db, {
+      assignedTo: adjuster.id,
+      estimatedAmount: "32000.00",
+    });
+    const proposed = await proposeSettlement(isolated.db, adjuster, {
+      claimId: fixture.claimId,
+      items: [{ claimItemId: fixture.itemId, amount: "32000.00" }],
+      deductibleApplied: "0.00",
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) return;
+
+    const first = await approveSettlement(isolated.db, adjuster, {
+      claimId: fixture.claimId,
+      settlementId: proposed.data.settlementId,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok || first.data.decision !== "routed") return;
+
+    const second = await approveSettlement(isolated.db, adjuster, {
+      claimId: fixture.claimId,
+      settlementId: proposed.data.settlementId,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok || second.data.decision !== "routed") return;
+    expect(second.data.taskId).toBe(first.data.taskId);
+
+    const openTasks = await isolated.db
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.claimId, fixture.claimId),
+          eq(tasks.type, "approve_settlement"),
+          eq(tasks.status, "open"),
+        ),
+      );
+    expect(openTasks).toHaveLength(1);
+  });
+
+  it("supervisor reject of approve_settlement requires reason and does not approve", async () => {
+    const adjuster = await insertStaffUser(isolated.db, {
+      role: "adjuster",
+      authorityLevel: 2,
+    });
+    const supervisor = await insertStaffUser(isolated.db, {
+      role: "supervisor",
+      authorityLevel: 3,
+    });
+    const fixture = await insertSettlementClaim(isolated.db, {
+      assignedTo: adjuster.id,
+      estimatedAmount: "32000.00",
+    });
+    const proposed = await proposeSettlement(isolated.db, adjuster, {
+      claimId: fixture.claimId,
+      items: [{ claimItemId: fixture.itemId, amount: "32000.00" }],
+      deductibleApplied: "0.00",
+    });
+    expect(proposed.ok).toBe(true);
+    if (!proposed.ok) return;
+
+    const routed = await approveSettlement(isolated.db, adjuster, {
+      claimId: fixture.claimId,
+      settlementId: proposed.data.settlementId,
+    });
+    expect(routed.ok).toBe(true);
+    if (!routed.ok || routed.data.decision !== "routed") return;
+
+    await expect(
+      resolveTaskDb(
+        isolated.db,
+        routed.data.taskId,
+        "rejected",
+        undefined,
+        undefined,
+        supervisor.id,
+      ),
+    ).rejects.toThrow(/resolution_reason is required/i);
+
+    const [stillOpen] = await isolated.db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, fixture.claimId));
+    expect(stillOpen.status).toBe("in_settlement");
+
+    const rejected = await resolveTaskDb(
+      isolated.db,
+      routed.data.taskId,
+      "rejected",
+      "Settlement amount is not justified by the assessment.",
+      undefined,
+      supervisor.id,
+    );
+    expect(rejected.ok).toBe(true);
+
+    const [claim] = await isolated.db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, fixture.claimId));
+    expect(claim.status).not.toBe("approved");
+    expect(claim.status).toBe("in_settlement");
+
+    const [settlement] = await isolated.db
+      .select()
+      .from(settlements)
+      .where(eq(settlements.id, proposed.data.settlementId));
+    expect(settlement.status).toBe("rejected");
+  });
 });
 
 describe("PBI-016 DenyClaimSchema validation", () => {

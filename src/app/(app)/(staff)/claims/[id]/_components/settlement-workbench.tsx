@@ -80,6 +80,11 @@ export function SettlementWorkbench({
   const inSettlement = claimStatus === "in_settlement";
   const isApproved = claimStatus === "approved";
   const isPaid = claimStatus === "paid";
+  const pendingApproval = latestSettlement?.status === "pending_approval";
+  const canApprove =
+    inSettlement &&
+    Boolean(latestSettlement) &&
+    latestSettlement?.status === "proposed";
 
   const breakdownTotal = useMemo(
     () =>
@@ -290,7 +295,7 @@ export function SettlementWorkbench({
           <Button
             variant="outline"
             onClick={() => void onApprove()}
-            disabled={!inSettlement || pending || !latestSettlement}
+            disabled={!canApprove || pending}
             data-testid="settle-approve"
           >
             Approve settlement
@@ -304,6 +309,16 @@ export function SettlementWorkbench({
             Deny claim
           </Button>
         </div>
+
+        {pendingApproval ? (
+          <p
+            className="text-sm text-warning"
+            role="status"
+            data-testid="settle-routed-banner"
+          >
+            Above your authority — routed to supervision.
+          </p>
+        ) : null}
 
         {latestSettlement ? (
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Db } from "@/lib/db/client";
 import { insertAuditLog } from "@/lib/db/queries/append-only";
@@ -11,6 +11,7 @@ import {
   parties,
   payments,
   settlements,
+  tasks,
   type FraudBand,
   type PaymentMethod,
   type SettlementItemRow,
@@ -274,6 +275,33 @@ export async function approveSettlement(
   }
 
   if (decision === "require_next_level") {
+    if (settlement.status === "pending_approval") {
+      const openTasks = await db
+        .select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.claimId, input.claimId),
+            eq(tasks.type, "approve_settlement"),
+            inArray(tasks.status, ["open", "in_progress"]),
+          ),
+        );
+      const existingTask = openTasks.find((row) => {
+        const payload = (row.payloadJson ?? {}) as Record<string, unknown>;
+        return payload.settlementId === input.settlementId;
+      });
+      if (existingTask) {
+        return {
+          ok: true,
+          data: {
+            decision: "routed",
+            taskId: existingTask.id,
+            message: AUTHORITY_ROUTED_MESSAGE,
+          },
+        };
+      }
+    }
+
     const task = await insertTask(db, {
       claimId: input.claimId,
       type: "approve_settlement",
