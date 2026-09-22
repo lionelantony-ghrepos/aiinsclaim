@@ -81,6 +81,12 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     description: "Max open tasks before adjuster is skipped",
   },
   {
+    key: "triage.retriage_amount_delta",
+    valueJson: 500,
+    valueType: "number",
+    description: "Minimum estimated amount change to trigger re-triage",
+  },
+  {
     key: "reserve.injury_factor",
     valueJson: 1.5,
     valueType: "number",

@@ -1,0 +1,7 @@
+{
+  "severityScore": 22,
+  "complexityScore": 15,
+  "reasonCodes": ["LOW_SEVERITY"],
+  "keyRisks": [],
+  "confidence": 0.84
+}
