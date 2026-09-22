@@ -95,7 +95,31 @@ async function loadActiveVersion(db: Db, code: string, asOfStr: string) {
   return { set, version };
 }
 
-async function loadRules(db: Db, versionId: string): Promise<LoadedRule[]> {
+async function loadVersionById(db: Db, versionId: string) {
+  const [version] = await db
+    .select()
+    .from(ruleSetVersions)
+    .where(eq(ruleSetVersions.id, versionId))
+    .limit(1);
+
+  if (!version) {
+    throw new NoActiveVersionError(versionId, "unknown");
+  }
+
+  const [set] = await db
+    .select()
+    .from(ruleSets)
+    .where(eq(ruleSets.id, version.ruleSetId))
+    .limit(1);
+
+  if (!set) {
+    throw new NoActiveVersionError(versionId, "unknown");
+  }
+
+  return { set, version };
+}
+
+export async function loadRules(db: Db, versionId: string): Promise<LoadedRule[]> {
   const ruleRows = await db
     .select()
     .from(rules)
@@ -322,6 +346,83 @@ async function evaluateWithHitPolicy(
   }
 }
 
+async function evaluateLoadedVersion(
+  db: Db,
+  code: BrCode,
+  set: { hitPolicy: HitPolicy },
+  versionId: string,
+  validated: Record<string, unknown>,
+  asOfStr: string,
+): Promise<{ matchedRuleIds: string[]; outputs: Record<string, unknown> }> {
+  const loadedRules = await loadRules(db, versionId);
+
+  if (code === "BR-FRAUD-001") {
+    return evaluateFraudRuleSet(db, loadedRules, validated, asOfStr);
+  }
+
+  return evaluateWithHitPolicy(
+    set.hitPolicy,
+    loadedRules,
+    validated,
+    asOfStr,
+    db,
+  );
+}
+
+export async function evaluateVersionById(
+  db: Db,
+  versionId: string,
+  code: BrCode,
+  inputs: unknown,
+  opts: EvaluateOptions = {},
+): Promise<EvaluateResult> {
+  const asOfStr = formatAsOf(opts.asOf);
+  const actor = opts.actor ?? "system";
+
+  let validated: Record<string, unknown>;
+  try {
+    validated = validateRuleInputs(code, inputs);
+  } catch (error) {
+    throw new RuleValidationError(`Invalid inputs for ${code}`, error);
+  }
+
+  const { set, version } = await loadVersionById(db, versionId);
+  if (set.code !== code) {
+    throw new RuleValidationError(
+      `Version ${versionId} belongs to ${set.code}, not ${code}`,
+    );
+  }
+
+  const { matchedRuleIds, outputs } = await evaluateLoadedVersion(
+    db,
+    code,
+    set,
+    version.id,
+    validated,
+    asOfStr,
+  );
+
+  let auditId: string | undefined;
+  if (!opts.dryRun) {
+    const auditRow = await insertRuleAuditLog(db, {
+      versionId: version.id,
+      claimId: opts.claimId ?? null,
+      inputsJson: validated,
+      outputsJson: outputs,
+      matchedRuleIds,
+      actor,
+    });
+    auditId = auditRow.id;
+  }
+
+  return {
+    outputs,
+    matchedRuleIds,
+    versionId: version.id,
+    auditId,
+  };
+}
+
 export async function evaluateRuleSet(
   db: Db,
   code: BrCode,
@@ -342,31 +443,14 @@ export async function evaluateRuleSet(
   }
 
   const { set, version } = await loadActiveVersion(db, code, asOfStr);
-  const loadedRules = await loadRules(db, version.id);
-
-  let matchedRuleIds: string[];
-  let outputs: Record<string, unknown>;
-
-  if (code === "BR-FRAUD-001") {
-    const fraudResult = await evaluateFraudRuleSet(
-      db,
-      loadedRules,
-      validated,
-      asOfStr,
-    );
-    matchedRuleIds = fraudResult.matchedRuleIds;
-    outputs = fraudResult.outputs;
-  } else {
-    const result = await evaluateWithHitPolicy(
-      set.hitPolicy,
-      loadedRules,
-      validated,
-      asOfStr,
-      db,
-    );
-    matchedRuleIds = result.matchedRuleIds;
-    outputs = result.outputs;
-  }
+  const { matchedRuleIds, outputs } = await evaluateLoadedVersion(
+    db,
+    code,
+    set,
+    version.id,
+    validated,
+    asOfStr,
+  );
 
   let auditId: string | undefined;
   if (!opts.dryRun) {

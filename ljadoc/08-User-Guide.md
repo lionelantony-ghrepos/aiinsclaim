@@ -39,4 +39,14 @@ Open [http://localhost:3000/login](http://localhost:3000/login).
 
 ---
 
-_Future sections (FNOL wizard, staff queues, admin rules editing) will be appended here as later PBIs ship._
+## Admin — Rules and parameters
+
+**Who:** Admin role only (`/rules`, `/parameters`).
+
+1. **Rules** — Open **Rules** in the sidebar. Each BR-* rule set shows its active version. Open a version to view the decision table (read-only for active/retired).
+2. **Create draft** — On an active version, click **Create draft**. Edit rows in the grid (label, conditions, actions JSON), then **Save draft**.
+3. **Simulate** — On a draft, click **Simulate**, paste sample inputs as JSON, and **Run simulation**. Results show matched rows and outputs; no audit log is written.
+4. **Activate** — On a draft, click **Activate**, enter a change note (min 10 characters) and effective date. The prior active version is retired at that boundary.
+5. **Parameters** — Open **Parameters**, edit value (JSON), type, and effective date, then **Save**. Changes affect live rule evaluation (e.g. lowering `stp.max_amount` blocks STP for higher claim amounts).
+
+_Future sections (FNOL wizard, staff queues) will be appended here as later PBIs ship._

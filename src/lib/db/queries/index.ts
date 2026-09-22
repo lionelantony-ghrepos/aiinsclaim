@@ -16,6 +16,16 @@ export { getClaimForUser, listClaimsForUser } from "./claims";
 export { listDocumentsForUser } from "./documents";
 export { listNotificationsForUser } from "./notifications";
 export {
+  countRuleAuditLog,
+  getParameterByKey,
+  getRuleSetByCode,
+  getVersionDetail,
+  listParameters,
+  listRuleSets,
+  listVersionsByRuleSet,
+} from "./rules-read";
+export {
+  cloneVersionRows,
   deleteRuleSet,
   insertParameter,
   insertRule,
@@ -23,7 +33,10 @@ export {
   insertRuleCondition,
   insertRuleSet,
   insertRuleSetVersion,
+  replaceDraftRows,
+  updateParameterByKey,
   updateRuleSet,
+  updateRuleSetVersion,
 } from "./rules";
 export {
   assertTaskResolutionReason,
