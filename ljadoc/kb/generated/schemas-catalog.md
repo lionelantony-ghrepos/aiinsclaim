@@ -49,3 +49,9 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - rules-admin.ts: simulateVersionSchema
 - rules-admin.ts: updateDraftRowsSchema
 - rules-admin.ts: upsertParameterSchema
+- tasks.ts: BulkReassignSchema
+- tasks.ts: ClaimTaskSchema
+- tasks.ts: ListQueueFiltersSchema
+- tasks.ts: ListQueueSchema
+- tasks.ts: ReleaseTaskSchema
+- tasks.ts: ResolveTaskSchema

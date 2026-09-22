@@ -7,6 +7,9 @@ export type AgentProposalCardProps = {
   summary: string;
   confidencePercent: number;
   reasonCodes: string[];
+  onAccept?: () => void;
+  onOverride?: () => void;
+  disabled?: boolean;
 };
 
 export function AgentProposalCard({
@@ -14,6 +17,9 @@ export function AgentProposalCard({
   summary,
   confidencePercent,
   reasonCodes,
+  onAccept,
+  onOverride,
+  disabled = false,
 }: AgentProposalCardProps) {
   const clamped = Math.min(100, Math.max(0, confidencePercent));
 
@@ -49,8 +55,21 @@ export function AgentProposalCard({
         ))}
       </ul>
       <div className="flex flex-wrap gap-2">
-        <Button>Accept</Button>
-        <Button variant="outline">Override</Button>
+        <Button
+          onClick={onAccept}
+          disabled={disabled || !onAccept}
+          data-testid="agent-proposal-accept"
+        >
+          Accept
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onOverride}
+          disabled={disabled || !onOverride}
+          data-testid="agent-proposal-override"
+        >
+          Override
+        </Button>
       </div>
     </Card>
   );

@@ -1,9 +1,31 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@/lib/db/client";
 import { claimParties, claims, parties } from "@/lib/db/schema";
-import type { UserRole } from "@/lib/db/schema/enums";
+import type { TaskQueue, UserRole } from "@/lib/db/schema/enums";
 import { RulesWriteForbiddenError } from "./errors";
 import type { SessionUser } from "./session";
+
+const ROLE_QUEUE_ACCESS: Record<UserRole, readonly TaskQueue[]> = {
+  claimant: [],
+  intake_agent: ["intake"],
+  adjuster: ["adjusting"],
+  supervisor: ["adjusting", "supervision"],
+  siu_analyst: ["siu"],
+  admin: ["intake", "adjusting", "supervision", "siu"],
+};
+
+export function queuesForRole(role: UserRole): TaskQueue[] {
+  return [...ROLE_QUEUE_ACCESS[role]];
+}
+
+export function canAccessQueue(role: UserRole, queue: TaskQueue): boolean {
+  return ROLE_QUEUE_ACCESS[role].includes(queue);
+}
+
+export function defaultQueueForRole(role: UserRole): TaskQueue | null {
+  const queues = queuesForRole(role);
+  return queues[0] ?? null;
+}
 
 const STAFF_ROLES = new Set<UserRole>([
   "intake_agent",

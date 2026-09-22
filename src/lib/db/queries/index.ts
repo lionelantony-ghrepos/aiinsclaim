@@ -52,3 +52,14 @@ export {
   insertTask,
   updateTask,
 } from "./tasks";
+export {
+  bulkReassignDb,
+  claimTaskDb,
+  getTaskWithClaim,
+  listQueueTasks,
+  listStaffAssignees,
+  releaseTaskDb,
+  resolveTaskDb,
+  type QueueTaskRow,
+  type TaskWithClaim,
+} from "./tasks-queue";
