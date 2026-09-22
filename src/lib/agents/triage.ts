@@ -454,9 +454,11 @@ async function executeFraudBandingActions(
     | undefined) ?? [];
 
   if (outputs.siu_referred === true || band === "critical") {
+    // Reset siuDisposition to "open" so a prior "cleared" disposition
+    // does not bypass the BR-AUTH-001 settlement hold on re-escalation.
     await db
       .update(claims)
-      .set({ siuReferred: true, updatedAt: new Date() })
+      .set({ siuReferred: true, siuDisposition: "open", updatedAt: new Date() })
       .where(eq(claims.id, claimId));
   }
 
