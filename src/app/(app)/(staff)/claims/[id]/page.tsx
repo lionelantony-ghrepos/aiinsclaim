@@ -3,19 +3,38 @@ import { FraudPanel } from "@/components/claims/fraud-panel";
 import { TriageCard } from "@/components/claims/triage-card";
 import { ClaimStatusTimeline } from "@/components/claim-status-timeline";
 import { SlaCountdown } from "@/components/sla-countdown";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
-import { getClaimForUser } from "@/lib/db/queries/claims";
+import { listDocumentsForUser } from "@/lib/db/queries/documents";
 import { getLatestFraudScore } from "@/lib/db/queries/fraud-read";
 import { getTriageSummary } from "@/lib/db/queries/triage-read";
-import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
+import {
+  getWorkbenchClaim,
+  listClaimAgentRuns,
+  listClaimHistory,
+  listClaimItems,
+  listClaimTasks,
+  listReserves,
+} from "@/lib/db/queries/workbench";
+import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
 import { getParameter } from "@/lib/rules/params";
+import { getSettlementChecklist } from "@/lib/assessment/checklist";
+import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
 import {
   slaDisplayElapsedRatio,
   slaDisplayRemainingLabel,
 } from "@/lib/ui/task-labels";
-import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
+import { CoveragePanel } from "./_components/coverage-panel";
+import { DocumentsPanel } from "./_components/documents-panel";
+import { FinancialsPanel } from "./_components/financials-panel";
+import { ItemsPanel } from "./_components/items-panel";
+import {
+  TasksPanel,
+  TimelinePanel,
+  type TimelineEntry,
+} from "./_components/timeline-tasks-panels";
+import { WorkbenchTabs, isWorkbenchTab } from "./_components/workbench-tabs";
 
 const TIMELINE_STEPS: { id: string; label: string; status: ClaimStatus }[] = [
   { id: "draft", label: "Draft", status: "draft" },
@@ -48,8 +67,10 @@ function timelineState(
 
 export default async function StaffClaimDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const user = await requireRole(
     "intake_agent",
@@ -59,16 +80,39 @@ export default async function StaffClaimDetailPage({
     "admin",
   );
   const { id: claimId } = await params;
+  const { tab } = await searchParams;
+  const activeTab = isWorkbenchTab(tab) ? tab : "overview";
   const db = getDb();
 
-  const claim = await getClaimForUser(db, user, claimId);
-  if (!claim) {
+  const workbench = await getWorkbenchClaim(db, user, claimId);
+  if (!workbench) {
     notFound();
   }
+  const { claim, policy } = workbench;
 
-  const triage = await getTriageSummary(db, claimId);
-  const fraudScore = await getLatestFraudScore(db, claimId);
-  const slaTimers = await listActiveSlaTimersForClaim(db, claimId);
+  const [
+    triage,
+    fraudScore,
+    slaTimers,
+    items,
+    documents,
+    reserves,
+    claimTasks,
+    history,
+    agentRuns,
+    checklist,
+  ] = await Promise.all([
+    getTriageSummary(db, claimId),
+    getLatestFraudScore(db, claimId),
+    listActiveSlaTimersForClaim(db, claimId),
+    listClaimItems(db, user, claimId),
+    listDocumentsForUser(db, user, claimId),
+    listReserves(db, user, claimId),
+    listClaimTasks(db, user, claimId),
+    listClaimHistory(db, user, claimId),
+    listClaimAgentRuns(db, user, claimId),
+    getSettlementChecklist(db, claimId),
+  ]);
   const now = new Date();
   const warningRatioParam = await getParameter(db, "sla.esc.warning_ratio", now);
   const warningRatio = Number(warningRatioParam.valueJson);
@@ -83,6 +127,47 @@ export default async function StaffClaimDetailPage({
     triage.stpAudit.outputs.stp_allowed === false
       ? triage.stpAudit.outputs.reason_code
       : null;
+
+  const openTasks = claimTasks.filter(
+    (task) => task.status === "open" || task.status === "in_progress",
+  );
+  const reserveTotal = reserves
+    .filter((row) =>
+      row.id ===
+      reserves.find((candidate) => candidate.kind === row.kind)?.id,
+    )
+    .reduce((sum, row) => sum + Number(row.amount), 0);
+
+  const timelineEntries: TimelineEntry[] = [
+    ...history.map((row) => ({
+      id: row.id,
+      at: row.createdAt,
+      kind: "state" as const,
+      title: `${row.fromStatus ?? "—"} → ${row.toStatus}`,
+      detail: row.reason ?? row.triggeredBy,
+    })),
+    ...claimTasks.map((task) => ({
+      id: task.id,
+      at: task.createdAt,
+      kind: "task" as const,
+      title: `${task.type.replaceAll("_", " ")} (${task.status})`,
+      detail: `${task.queue} queue · priority ${task.priority}`,
+    })),
+    ...agentRuns.map((run) => ({
+      id: run.id,
+      at: run.createdAt,
+      kind: "agent" as const,
+      title: run.agentId,
+      detail: `status ${run.status}${run.outcome ? ` · ${run.outcome}` : ""}`,
+    })),
+    ...reserves.map((row) => ({
+      id: row.id,
+      at: row.createdAt,
+      kind: "reserve" as const,
+      title: `${row.kind} reserve ${row.amount}`,
+      detail: `source ${row.source.replaceAll("_", " ")}`,
+    })),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
@@ -133,35 +218,91 @@ export default async function StaffClaimDetailPage({
         </Card>
       ) : null}
 
-      <TriageCard
-        claimNumber={claim.claimNumber}
-        route={claim.route}
-        priority={claim.priority}
-        severityScore={triage.severityScore ?? claim.severityScore}
-        complexityScore={triage.complexityScore ?? claim.complexityScore}
-        reasonCodes={triage.reasonCodes}
-        keyRisks={triage.keyRisks}
-        confidencePercent={
-          triage.confidence !== null ? Math.round(triage.confidence * 100) : null
-        }
-        stpBlockReason={stpBlockReason}
-        matchedTriageRules={triage.triageAudit?.matchedRuleIds ?? []}
-      />
+      <WorkbenchTabs claimId={claim.id} active={activeTab} />
 
-      {fraudScore ? (
-        <FraudPanel
+      {activeTab === "overview" ? (
+        <div className="space-y-8" data-testid="workbench-overview">
+          <TriageCard
+            claimNumber={claim.claimNumber}
+            route={claim.route}
+            priority={claim.priority}
+            severityScore={triage.severityScore ?? claim.severityScore}
+            complexityScore={triage.complexityScore ?? claim.complexityScore}
+            reasonCodes={triage.reasonCodes}
+            keyRisks={triage.keyRisks}
+            confidencePercent={
+              triage.confidence !== null ? Math.round(triage.confidence * 100) : null
+            }
+            stpBlockReason={stpBlockReason}
+            matchedTriageRules={triage.triageAudit?.matchedRuleIds ?? []}
+          />
+
+          {fraudScore ? (
+            <FraudPanel
+              claimId={claim.id}
+              claimNumber={claim.claimNumber}
+              band={fraudScore.band as FraudBand}
+              score={fraudScore.score}
+              reasonCodes={fraudScore.reasonCodes}
+              scoreBreakdown={signalsJson.scoreBreakdown ?? []}
+              evidence={signalsJson.agentSignals?.evidence ?? []}
+              siuDisposition={(claim.siuDisposition as SiuDisposition | null) ?? null}
+              siuReferred={claim.siuReferred}
+              userRole={user.role}
+            />
+          ) : null}
+
+          <CoveragePanel
+            lineOfBusiness={claim.lineOfBusiness}
+            claimType={claim.claimType}
+            estimatedAmount={claim.estimatedAmount}
+            coverageJson={(policy?.coverageJson ?? {}) as Record<string, unknown>}
+          />
+
+          <Card data-testid="workbench-facts" className="space-y-2">
+            <CardHeader className="mb-0">
+              <CardTitle>Assessment facts</CardTitle>
+            </CardHeader>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-text-muted">Items</dt>
+                <dd className="font-mono" data-testid="facts-items">{items.length}</dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">Documents</dt>
+                <dd className="font-mono" data-testid="facts-documents">{documents.length}</dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">Reserve total</dt>
+                <dd className="font-mono" data-testid="facts-reserve-total">
+                  {reserveTotal.toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-muted">Open tasks</dt>
+                <dd className="font-mono" data-testid="facts-open-tasks">{openTasks.length}</dd>
+              </div>
+            </dl>
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === "items" ? <ItemsPanel items={items} /> : null}
+
+      {activeTab === "documents" ? <DocumentsPanel documents={documents} /> : null}
+
+      {activeTab === "financials" ? (
+        <FinancialsPanel
           claimId={claim.id}
-          claimNumber={claim.claimNumber}
-          band={fraudScore.band as FraudBand}
-          score={fraudScore.score}
-          reasonCodes={fraudScore.reasonCodes}
-          scoreBreakdown={signalsJson.scoreBreakdown ?? []}
-          evidence={signalsJson.agentSignals?.evidence ?? []}
-          siuDisposition={(claim.siuDisposition as SiuDisposition | null) ?? null}
-          siuReferred={claim.siuReferred}
-          userRole={user.role}
+          claimStatus={claim.status}
+          reserves={reserves}
+          checklist={checklist}
         />
       ) : null}
+
+      {activeTab === "timeline" ? <TimelinePanel entries={timelineEntries} /> : null}
+
+      {activeTab === "tasks" ? <TasksPanel tasks={claimTasks} /> : null}
     </div>
   );
 }

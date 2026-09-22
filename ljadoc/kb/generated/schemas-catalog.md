@@ -41,6 +41,11 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - claims.ts: runIntakeCopilotSchema
 - claims.ts: submitClaimSchema
 - claims.ts: updateDraftClaimSchema
+- financials.ts: CompleteAssessmentSchema
+- financials.ts: ConfirmReserveSchema
+- financials.ts: RequestInfoSchema
+- financials.ts: SuggestReserveSchema
+- financials.ts: UpdateItemAssessmentSchema
 - rules-admin.ts: RuleActionSchema
 - rules-admin.ts: RuleConditionSchema
 - rules-admin.ts: RuleRowSchema
