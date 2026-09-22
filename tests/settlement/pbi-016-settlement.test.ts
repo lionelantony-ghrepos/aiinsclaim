@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { IsolatedDb } from "@/lib/db/isolated";
 import {
   claims,
+  fraudScores,
   notifications,
   payments,
   settlements,
@@ -88,6 +89,16 @@ describe("PBI-016 settlement authority & payments", () => {
     const fixture = await insertSettlementClaim(isolated.db, {
       assignedTo: adjuster.id,
       estimatedAmount: "32000.00",
+    });
+    // AC-016-01 Given: fraud band low (worked example BR-AUTH-001)
+    await isolated.db.insert(fraudScores).values({
+      id: crypto.randomUUID(),
+      claimId: fixture.claimId,
+      score: 10,
+      band: "low",
+      reasonCodes: [],
+      signalsJson: {},
+      createdAt: new Date(),
     });
 
     const proposed = await proposeSettlement(isolated.db, adjuster, {

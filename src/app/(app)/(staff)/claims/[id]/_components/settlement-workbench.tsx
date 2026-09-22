@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, CircleDashed } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ export function SettlementWorkbench({
   openTaskCount: number;
   denialReasonCodes: string[];
 }) {
+  const router = useRouter();
   const [amounts, setAmounts] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       items.map((item) => [item.id, item.assessedAmount ?? "0.00"]),
@@ -111,6 +113,7 @@ export function SettlementWorkbench({
     setPending(false);
     if (result.ok) {
       setStatus(`Settlement proposed (${result.data.totalAmount}).`);
+      router.refresh();
     } else {
       setStatus(`Propose failed: ${result.error.message}`);
     }
@@ -143,6 +146,7 @@ export function SettlementWorkbench({
     } else {
       setStatus("Settlement approved.");
     }
+    router.refresh();
   }
 
   async function onIssuePayment() {
@@ -160,6 +164,7 @@ export function SettlementWorkbench({
     setPending(false);
     if (result.ok) {
       setStatus(`Payment issued: ${result.data.reference}`);
+      router.refresh();
     } else {
       setStatus(`Payment failed: ${result.error.message}`);
     }
@@ -172,6 +177,7 @@ export function SettlementWorkbench({
     setPending(false);
     if (result.ok) {
       setStatus("Claim closed.");
+      router.refresh();
     } else {
       setStatus(`Close failed: ${result.error.message}`);
     }
@@ -189,6 +195,7 @@ export function SettlementWorkbench({
     if (result.ok) {
       setDenyOpen(false);
       setStatus("Denial submitted for supervisor confirmation.");
+      router.refresh();
     } else {
       setStatus(`Denial failed: ${result.error.message}`);
     }
@@ -418,8 +425,9 @@ export function SettlementWorkbench({
       </Card>
 
       {denyOpen ? (
-        <dialog
-          open
+        <div
+          role="dialog"
+          aria-modal="true"
           className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg"
           data-testid="deny-dialog"
           aria-labelledby="deny-dialog-title"
@@ -471,17 +479,21 @@ export function SettlementWorkbench({
               </Button>
             </div>
           </div>
-        </dialog>
+        </div>
       ) : null}
 
-      <p className="sr-only" aria-live="polite" data-testid="settle-status-sr">
-        {status}
+      <p
+        className={
+          status && !siuHold
+            ? "text-sm text-text-muted"
+            : "sr-only"
+        }
+        data-testid="settle-status"
+        role="status"
+        aria-live="polite"
+      >
+        {status ?? ""}
       </p>
-      {status && !siuHold ? (
-        <p className="text-sm text-text-muted" data-testid="settle-status" role="status">
-          {status}
-        </p>
-      ) : null}
     </div>
   );
 }

@@ -21,7 +21,13 @@ async function getUserByEmail(email: string) {
   return user;
 }
 
-async function prepareSettlementClaim(position: number) {
+async function prepareSettlementClaim(
+  position: number,
+  opts?: {
+    fraudBand?: "low" | "medium" | "high" | "critical";
+    itemAmount?: string;
+  },
+) {
   const db = getDb();
   const adjuster = await getUserByEmail(DEMO_ACCOUNT_EMAILS.adjuster);
   const rows = await db
@@ -33,12 +39,15 @@ async function prepareSettlementClaim(position: number) {
   if (!claim) {
     throw new Error(`No in_settlement seed claim at position ${position}`);
   }
+  const itemAmount = opts?.itemAmount ?? "32000.00";
   await db
     .update(claims)
     .set({
       assignedTo: adjuster.id,
       siuReferred: false,
       siuDisposition: null,
+      estimatedAmount: itemAmount,
+      denialReasonCode: null,
       updatedAt: new Date(),
     })
     .where(eq(claims.id, claim.id));
@@ -47,38 +56,40 @@ async function prepareSettlementClaim(position: number) {
   await db.delete(payments).where(eq(payments.claimId, claim.id));
   await db.delete(fraudScores).where(eq(fraudScores.claimId, claim.id));
 
-  const items = await db
-    .select()
-    .from(claimItems)
-    .where(eq(claimItems.claimId, claim.id));
-  if (items.length === 0) {
-    await db.insert(claimItems).values({
-      id: crypto.randomUUID(),
-      claimId: claim.id,
-      itemType: "vehicle",
-      description: "E2E settlement item",
-      assessedAmount: "32000.00",
-      assessmentStatus: "assessed",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-  } else {
-    await db
-      .update(claimItems)
-      .set({
-        assessedAmount: "32000.00",
-        assessmentStatus: "assessed",
-        updatedAt: new Date(),
-      })
-      .where(eq(claimItems.claimId, claim.id));
-  }
+  const fraudBand = opts?.fraudBand ?? "low";
+  await db.insert(fraudScores).values({
+    id: crypto.randomUUID(),
+    claimId: claim.id,
+    score: fraudBand === "low" ? 10 : 60,
+    band: fraudBand,
+    reasonCodes: [],
+    signalsJson: {},
+    createdAt: new Date(),
+  });
+
+  // Single item at the test amount — multi-item seeds otherwise keep extra
+  // assessed rows at 32k and incorrectly trip BR-AUTH-001.
+  await db.delete(claimItems).where(eq(claimItems.claimId, claim.id));
+  await db.insert(claimItems).values({
+    id: crypto.randomUUID(),
+    claimId: claim.id,
+    itemType: "vehicle",
+    description: "E2E settlement item",
+    assessedAmount: itemAmount,
+    assessmentStatus: "assessed",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 
   return { claim, adjuster };
 }
 
 test.describe("TC-016-01 authority route to supervision", () => {
   test("32k settlement routes with worked-example message", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(0);
+    const { claim } = await prepareSettlementClaim(0, {
+      fraudBand: "low",
+      itemAmount: "32000.00",
+    });
     await loginAs(page, DEMO_ACCOUNT_EMAILS.adjuster);
     await page.goto(`/claims/${claim.id}?tab=financials`, {
       waitUntil: "domcontentloaded",
@@ -116,7 +127,10 @@ test.describe("TC-016-01 authority route to supervision", () => {
 
 test.describe("TC-016-02 authority allow within level", () => {
   test("small settlement approves for level-2 adjuster", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(1);
+    const { claim } = await prepareSettlementClaim(1, {
+      fraudBand: "low",
+      itemAmount: "2000.00",
+    });
     await loginAs(page, DEMO_ACCOUNT_EMAILS.adjuster);
     await page.goto(`/claims/${claim.id}?tab=financials`, {
       waitUntil: "domcontentloaded",
@@ -142,7 +156,10 @@ test.describe("TC-016-02 authority allow within level", () => {
 
 test.describe("TC-016-03 SIU hold", () => {
   test("shows SIU hold banner and does not transition", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(2);
+    const { claim } = await prepareSettlementClaim(2, {
+      fraudBand: "low",
+      itemAmount: "1000.00",
+    });
     const db = getDb();
     await db
       .update(claims)
@@ -175,7 +192,10 @@ test.describe("TC-016-03 SIU hold", () => {
 
 test.describe("TC-016-04 payment and close", () => {
   test("issues mock payment and closes when tasks clear", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(3);
+    const { claim } = await prepareSettlementClaim(3, {
+      fraudBand: "low",
+      itemAmount: "1500.00",
+    });
     await loginAs(page, DEMO_ACCOUNT_EMAILS.adjuster);
     await page.goto(`/claims/${claim.id}?tab=financials`, {
       waitUntil: "domcontentloaded",
@@ -206,6 +226,8 @@ test.describe("TC-016-04 payment and close", () => {
       .where(eq(payments.claimId, claim.id));
     expect(payRows.length).toBeGreaterThanOrEqual(1);
     expect(payRows[0]?.reference?.startsWith("ACH-MOCK-")).toBe(true);
+    const [paidClaim] = await db.select().from(claims).where(eq(claims.id, claim.id));
+    expect(paidClaim.status).toBe("paid");
 
     const openTaskId = crypto.randomUUID();
     await db.insert(tasks).values({
@@ -219,6 +241,14 @@ test.describe("TC-016-04 payment and close", () => {
       updatedAt: new Date(),
     });
     await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("settlement-workbench")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("closure-open-tasks")).toContainText(
+      "1 open task",
+      { timeout: 15_000 },
+    );
+    await expect(page.getByTestId("claim-close")).toBeEnabled();
     await page.getByTestId("claim-close").click();
     await expect(page.getByTestId("settle-status")).toContainText("open task", {
       timeout: 15_000,
@@ -229,6 +259,13 @@ test.describe("TC-016-04 payment and close", () => {
       .set({ status: "done", updatedAt: new Date() })
       .where(eq(tasks.id, openTaskId));
     await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("settlement-workbench")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("closure-open-tasks")).toContainText(
+      "No open tasks",
+      { timeout: 15_000 },
+    );
     await page.getByTestId("claim-close").click();
     await expect(page.getByTestId("settle-status")).toContainText("Claim closed", {
       timeout: 15_000,
@@ -241,7 +278,11 @@ test.describe("TC-016-04 payment and close", () => {
 
 test.describe("TC-016-05 denial supervisor gate", () => {
   test("denial creates confirmation task; supervisor confirms", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(4);
+    test.setTimeout(120_000);
+    const { claim } = await prepareSettlementClaim(4, {
+      fraudBand: "low",
+      itemAmount: "4000.00",
+    });
     const db = getDb();
 
     await loginAs(page, DEMO_ACCOUNT_EMAILS.adjuster);
@@ -249,8 +290,14 @@ test.describe("TC-016-05 denial supervisor gate", () => {
       waitUntil: "domcontentloaded",
     });
 
+    await expect(page.getByTestId("settlement-workbench")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("settle-deny-open")).toBeEnabled();
     await page.getByTestId("settle-deny-open").click();
-    await expect(page.getByTestId("deny-dialog")).toBeVisible();
+    await expect(page.getByTestId("deny-dialog")).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByTestId("deny-reason-code").selectOption("COVERAGE_EXCLUDED");
     await page.getByTestId("deny-note").fill("short");
     await expect(page.getByTestId("deny-submit")).toBeDisabled();
@@ -286,6 +333,7 @@ test.describe("TC-016-05 denial supervisor gate", () => {
       timeout: 30_000,
     });
     await page.getByTestId("deny-confirmation-accept").click();
+    await expect(page.getByTestId("task-detail-error")).toHaveCount(0);
     await expect
       .poll(
         async () => {
