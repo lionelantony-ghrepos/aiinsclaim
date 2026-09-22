@@ -15,11 +15,15 @@ import {
   listClaimHistory,
   listClaimItems,
   listClaimTasks,
+  listPayments,
   listReserves,
+  listSettlements,
 } from "@/lib/db/queries/workbench";
 import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
 import { getParameter } from "@/lib/rules/params";
 import { getSettlementChecklist } from "@/lib/assessment/checklist";
+import { evaluateCoverage } from "@/lib/coverage";
+import { DENIAL_REASON_CODES } from "@/lib/schemas/denial";
 import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
 import {
   slaDisplayElapsedRatio,
@@ -101,6 +105,9 @@ export default async function StaffClaimDetailPage({
     history,
     agentRuns,
     checklist,
+    settlements,
+    paymentRows,
+    denialParam,
   ] = await Promise.all([
     getTriageSummary(db, claimId),
     getLatestFraudScore(db, claimId),
@@ -112,7 +119,23 @@ export default async function StaffClaimDetailPage({
     listClaimHistory(db, user, claimId),
     listClaimAgentRuns(db, user, claimId),
     getSettlementChecklist(db, claimId),
+    listSettlements(db, user, claimId),
+    listPayments(db, user, claimId),
+    getParameter(db, "denial.reason_codes").catch(() => ({
+      valueJson: [...DENIAL_REASON_CODES],
+    })),
   ]);
+  const coverage = evaluateCoverage(
+    {
+      lineOfBusiness: claim.lineOfBusiness,
+      claimType: claim.claimType,
+      estimatedAmount: Number(claim.estimatedAmount ?? 0),
+    },
+    (policy?.coverageJson ?? {}) as Record<string, unknown>,
+  );
+  const denialReasonCodes = Array.isArray(denialParam.valueJson)
+    ? denialParam.valueJson.filter((c): c is string => typeof c === "string")
+    : [...DENIAL_REASON_CODES];
   const now = new Date();
   const warningRatioParam = await getParameter(db, "sla.esc.warning_ratio", now);
   const warningRatio = Number(warningRatioParam.valueJson);
@@ -297,6 +320,28 @@ export default async function StaffClaimDetailPage({
           claimStatus={claim.status}
           reserves={reserves}
           checklist={checklist}
+          settlementItems={items.map((item) => ({
+            id: item.id,
+            description: item.description,
+            assessedAmount: item.assessedAmount,
+          }))}
+          deductibleDefault={coverage.deductible.toFixed(2)}
+          settlements={settlements.map((row) => ({
+            id: row.id,
+            status: row.status,
+            totalAmount: row.totalAmount,
+            deductibleApplied: row.deductibleApplied,
+            note: row.note,
+          }))}
+          payments={paymentRows.map((row) => ({
+            id: row.id,
+            amount: row.amount,
+            method: row.method,
+            status: row.status,
+            reference: row.reference,
+          }))}
+          openTaskCount={openTasks.length}
+          denialReasonCodes={denialReasonCodes}
         />
       ) : null}
 

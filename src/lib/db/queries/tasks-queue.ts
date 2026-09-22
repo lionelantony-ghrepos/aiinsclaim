@@ -42,6 +42,10 @@ import {
 import { slaVisualTone } from "@/lib/ui/sla-visual";
 import { updateAgentRunOutcome } from "./append-only";
 import { assertTaskResolutionReason, updateTask } from "./tasks";
+import {
+  resolveApproveSettlementTask,
+  resolveDenyConfirmationTask,
+} from "@/lib/settlement/service";
 
 export type QueueTaskRow = {
   id: string;
@@ -460,6 +464,79 @@ export async function resolveTaskDb(
   }
 
   const payload = (existing.payloadJson ?? {}) as Record<string, unknown>;
+  const payloadKind =
+    typeof payload.kind === "string" ? payload.kind : null;
+  const settlementResolution =
+    resolution === "accepted"
+      ? ("accepted" as const)
+      : resolution === "rejected" || resolution === "overridden"
+        ? ("rejected" as const)
+        : null;
+
+  if (
+    settlementResolution &&
+    (existing.type === "approve_settlement" ||
+      payloadKind === "deny_confirmation")
+  ) {
+    const [actor] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, actorId))
+      .limit(1);
+    if (!actor) {
+      return { ok: false as const, code: "NOT_FOUND" as const };
+    }
+    const sessionUser = {
+      id: actor.id,
+      email: actor.email,
+      displayName: actor.displayName,
+      role: actor.role,
+      authorityLevel: actor.authorityLevel,
+    };
+
+    const sideEffect =
+      existing.type === "approve_settlement"
+        ? await resolveApproveSettlementTask(
+            db,
+            sessionUser,
+            {
+              id: existing.id,
+              claimId: existing.claimId,
+              payloadJson: existing.payloadJson,
+            },
+            settlementResolution,
+            resolutionReason,
+          )
+        : await resolveDenyConfirmationTask(
+            db,
+            sessionUser,
+            {
+              id: existing.id,
+              claimId: existing.claimId,
+              payloadJson: existing.payloadJson,
+            },
+            settlementResolution,
+            resolutionReason,
+          );
+
+    if (!sideEffect.ok) {
+      return {
+        ok: false as const,
+        code: sideEffect.error.code as
+          | "NOT_FOUND"
+          | "ALREADY_RESOLVED"
+          | "REASON_REQUIRED"
+          | "APPROVAL_REQUIRED"
+          | "SIU_HOLD"
+          | "GUARD_FAILED"
+          | "VALIDATION_FAILED"
+          | "ILLEGAL_TRANSITION"
+          | "FORBIDDEN",
+        message: sideEffect.error.message,
+      };
+    }
+  }
+
   const mergedPayload =
     resultPayload && typeof resultPayload === "object"
       ? { ...payload, result: resultPayload }

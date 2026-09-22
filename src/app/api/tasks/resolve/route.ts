@@ -45,7 +45,16 @@ export async function POST(request: Request) {
 
     if (!result.ok) {
       return NextResponse.json(
-        { ok: false, error: { code: result.code, message: "Unable to resolve task" } },
+        {
+          ok: false,
+          error: {
+            code: result.code,
+            message:
+              "message" in result && typeof result.message === "string"
+                ? result.message
+                : "Unable to resolve task",
+          },
+        },
         { status: 400 },
       );
     }

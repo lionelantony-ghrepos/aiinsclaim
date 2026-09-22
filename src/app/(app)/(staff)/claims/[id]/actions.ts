@@ -28,8 +28,20 @@ import {
   RequestInfoSchema,
   SuggestReserveSchema,
   UpdateItemAssessmentSchema,
+  ApproveSettlementSchema,
+  CloseClaimSchema,
+  DenyClaimSchema,
+  IssuePaymentSchema,
+  ProposeSettlementSchema,
 } from "@/lib/schemas/financials";
 import { getParameter } from "@/lib/rules/params";
+import {
+  approveSettlement,
+  closeClaim,
+  denyClaim,
+  issuePayment,
+  proposeSettlement,
+} from "@/lib/settlement/service";
 import {
   GuardFailedError,
   IllegalTransitionError,
@@ -463,6 +475,97 @@ export async function completeAssessmentAction(
 
     revalidateWorkbench(parsed.claimId);
     return { ok: true, data: { claimId: parsed.claimId } };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function proposeSettlementAction(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ settlementId: string; totalAmount: string }>> {
+  try {
+    const user = await requireRole(...ASSESSMENT_ROLES);
+    const parsed = ProposeSettlementSchema.parse(input);
+    const db = getDb();
+    const result = await proposeSettlement(db, user, parsed);
+    if (result.ok) {
+      revalidateWorkbench(parsed.claimId);
+    }
+    return result;
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function approveSettlementAction(
+  input: unknown,
+): Promise<
+  WorkbenchActionResult<
+    | { decision: "allowed"; claimId: string }
+    | { decision: "routed"; taskId: string; message: string }
+  >
+> {
+  try {
+    const user = await requireRole(...ASSESSMENT_ROLES);
+    const parsed = ApproveSettlementSchema.parse(input);
+    const db = getDb();
+    const result = await approveSettlement(db, user, parsed);
+    if (result.ok || result.error.code === "SIU_HOLD") {
+      revalidateWorkbench(parsed.claimId);
+    }
+    return result;
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function issuePaymentAction(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ paymentId: string; reference: string }>> {
+  try {
+    const user = await requireRole(...ASSESSMENT_ROLES);
+    const parsed = IssuePaymentSchema.parse(input);
+    const db = getDb();
+    const result = await issuePayment(db, user, parsed);
+    if (result.ok) {
+      revalidateWorkbench(parsed.claimId);
+    }
+    return result;
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function closeClaimAction(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ claimId: string }>> {
+  try {
+    const user = await requireRole(...ASSESSMENT_ROLES);
+    const parsed = CloseClaimSchema.parse(input);
+    const db = getDb();
+    const result = await closeClaim(db, user, parsed);
+    if (result.ok) {
+      revalidateWorkbench(parsed.claimId);
+    }
+    return result;
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function denyClaimAction(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ taskId: string }>> {
+  try {
+    const user = await requireRole(...ASSESSMENT_ROLES);
+    const parsed = DenyClaimSchema.parse(input);
+    const db = getDb();
+    const result = await denyClaim(db, user, parsed);
+    if (result.ok) {
+      revalidateWorkbench(parsed.claimId);
+      revalidatePath("/queue");
+    }
+    return result;
   } catch (error) {
     return actionError(error);
   }

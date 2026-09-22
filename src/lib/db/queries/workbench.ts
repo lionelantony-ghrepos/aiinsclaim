@@ -8,7 +8,9 @@ import {
   claimStateHistory,
   policies,
   claims,
+  payments,
   reserves,
+  settlements,
   tasks,
 } from "@/lib/db/schema";
 import { getClaimForUser } from "./claims";
@@ -49,6 +51,24 @@ export async function listReserves(db: Db, user: SessionUser, claimId: string) {
     .from(reserves)
     .where(eq(reserves.claimId, claimId))
     .orderBy(desc(reserves.createdAt));
+}
+
+export async function listSettlements(db: Db, user: SessionUser, claimId: string) {
+  await assertClaimAccess(db, user, claimId);
+  return db
+    .select()
+    .from(settlements)
+    .where(eq(settlements.claimId, claimId))
+    .orderBy(desc(settlements.createdAt));
+}
+
+export async function listPayments(db: Db, user: SessionUser, claimId: string) {
+  await assertClaimAccess(db, user, claimId);
+  return db
+    .select()
+    .from(payments)
+    .where(eq(payments.claimId, claimId))
+    .orderBy(desc(payments.createdAt));
 }
 
 export async function getLatestReserves(db: Db, user: SessionUser, claimId: string) {
