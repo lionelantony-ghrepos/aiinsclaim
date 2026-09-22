@@ -32,6 +32,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   { href: "/rules", label: "Rules", roles: ["admin"] },
   { href: "/parameters", label: "Parameters", roles: ["admin"] },
+  { href: "/sla", label: "SLA sweep", roles: ["admin"] },
   { href: "/dev/components", label: "Component lab", roles: USER_ROLES },
 ];
 

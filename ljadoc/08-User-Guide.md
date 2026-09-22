@@ -48,5 +48,6 @@ Open [http://localhost:3000/login](http://localhost:3000/login).
 3. **Simulate** — On a draft, click **Simulate**, paste sample inputs as JSON, and **Run simulation**. Results show matched rows and outputs; no audit log is written.
 4. **Activate** — On a draft, click **Activate**, enter a change note (min 10 characters) and effective date. The prior active version is retired at that boundary.
 5. **Parameters** — Open **Parameters**, edit value (JSON), type, and effective date, then **Save**. Changes affect live rule evaluation (e.g. lowering `stp.max_amount` blocks STP for higher claim amounts).
+6. **SLA sweep** — Open **SLA sweep** and click **Run SLA sweep now** to evaluate active timers and apply escalation tiers (same logic as the secured `/api/sweep/sla` endpoint used by production cron).
 
 _Future sections (FNOL wizard, staff queues) will be appended here as later PBIs ship._

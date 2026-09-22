@@ -47,6 +47,10 @@ const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
     pattern: /^\/parameters(\/|$)/,
     roles: ["admin"],
   },
+  {
+    pattern: /^\/sla(\/|$)/,
+    roles: ["admin"],
+  },
 ];
 
 const PUBLIC_PATHS = new Set(["/login"]);

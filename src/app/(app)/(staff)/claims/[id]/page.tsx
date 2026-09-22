@@ -2,11 +2,18 @@ import { notFound } from "next/navigation";
 import { FraudPanel } from "@/components/claims/fraud-panel";
 import { TriageCard } from "@/components/claims/triage-card";
 import { ClaimStatusTimeline } from "@/components/claim-status-timeline";
+import { SlaCountdown } from "@/components/sla-countdown";
+import { Card } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { getClaimForUser } from "@/lib/db/queries/claims";
 import { getLatestFraudScore } from "@/lib/db/queries/fraud-read";
 import { getTriageSummary } from "@/lib/db/queries/triage-read";
+import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
+import {
+  formatSlaRemaining,
+  slaElapsedRatio,
+} from "@/lib/ui/task-labels";
 import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
 
 const TIMELINE_STEPS: { id: string; label: string; status: ClaimStatus }[] = [
@@ -60,6 +67,8 @@ export default async function StaffClaimDetailPage({
 
   const triage = await getTriageSummary(db, claimId);
   const fraudScore = await getLatestFraudScore(db, claimId);
+  const slaTimers = await listActiveSlaTimersForClaim(db, claimId);
+  const now = new Date();
   const signalsJson = (fraudScore?.signalsJson ?? {}) as {
     scoreBreakdown?: { points: number; reasonCode?: string }[];
     agentSignals?: {
@@ -90,6 +99,35 @@ export default async function StaffClaimDetailPage({
           state: timelineState(step.status, claim.status),
         }))}
       />
+
+      {slaTimers.length > 0 ? (
+        <Card className="space-y-3 p-4">
+          <h2 className="text-lg font-medium">Active SLA timers</h2>
+          <ul className="space-y-2">
+            {slaTimers.map((timer) => (
+              <li
+                key={timer.id}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <span className="text-sm text-text-muted">
+                  {timerCodeLabel(timer.timerCode)}
+                  {timer.status === "paused" ? " (paused)" : ""}
+                </span>
+                <SlaCountdown
+                  remainingLabel={formatSlaRemaining(timer.dueAt, now)}
+                  status={timer.status}
+                  elapsedRatio={slaElapsedRatio(
+                    timer.startedAt,
+                    timer.dueAt,
+                    now,
+                  )}
+                  testId={`sla-timer-${timer.id}`}
+                />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <TriageCard
         claimNumber={claim.claimNumber}

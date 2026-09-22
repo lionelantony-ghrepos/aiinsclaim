@@ -2,6 +2,10 @@ import { eq } from "drizzle-orm";
 import { TaskResolutionReasonRequiredError } from "@/lib/auth/errors";
 import type { Db } from "@/lib/db/client";
 import {
+  markTaskCompletionTimerMet,
+  startSlaTimerForTask,
+} from "@/lib/sla/timers";
+import {
   tasks,
   type TaskQueue,
   type TaskResolution,
@@ -53,6 +57,13 @@ export async function insertTask(
       slaTimerId: values.slaTimerId,
     })
     .returning();
+
+  await startSlaTimerForTask(db, {
+    claimId: values.claimId,
+    taskId: row.id,
+    taskType: values.type,
+  });
+
   return row;
 }
 
@@ -94,5 +105,15 @@ export async function updateTask(
     .set({ ...values, updatedAt: new Date() })
     .where(eq(tasks.id, id))
     .returning();
+
+  if (
+    row &&
+    values.status &&
+    (values.status === "done" || values.status === "cancelled") &&
+    values.status !== existing.status
+  ) {
+    await markTaskCompletionTimerMet(db, id);
+  }
+
   return row ?? null;
 }
