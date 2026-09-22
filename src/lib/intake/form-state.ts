@@ -28,6 +28,7 @@ export type WizardDocument = {
   fileName?: string;
   mimeType: string;
   sizeBytes: number;
+  status?: string;
 };
 
 export type FnolFormState = {
@@ -135,6 +136,7 @@ export function draftDetailToFormState(detail: NonNullable<DraftDetail>): FnolFo
       docType: doc.docType,
       mimeType: doc.mimeType,
       sizeBytes: doc.sizeBytes,
+      status: doc.status,
     })),
   };
 }

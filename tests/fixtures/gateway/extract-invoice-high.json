@@ -1,0 +1,17 @@
+{
+  "output": {
+    "fields": {
+      "vendorName": { "value": "Acme Auto Repair", "confidence": 0.96 },
+      "invoiceDate": { "value": "2026-01-15", "confidence": 0.94 },
+      "totalAmount": { "value": "2450.00", "confidence": 0.95 },
+      "lineItems": {
+        "value": [{ "desc": "Bumper repair", "amount": "2450.00" }],
+        "confidence": 0.93
+      }
+    },
+    "minConfidence": 0.93,
+    "anomalies": []
+  },
+  "model": "mock:agt-extract-v1",
+  "latencyMs": 1
+}

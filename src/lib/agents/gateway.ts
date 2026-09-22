@@ -1,3 +1,10 @@
+import { ExtractAgentUnavailableError } from "@/lib/agents/errors";
+import {
+  ExtractAgentInputSchema,
+  ExtractAgentOutputSchema,
+  type ExtractAgentInput,
+  type ExtractAgentOutput,
+} from "@/lib/schemas/agents/extract";
 import {
   IntakeAgentInputSchema,
   IntakeAgentOutputSchema,
@@ -46,6 +53,150 @@ function mockIntakeResponse(input: IntakeAgentInput): IntakeAgentOutput {
   });
 }
 
+function highConfidenceInvoice(): ExtractAgentOutput {
+  return ExtractAgentOutputSchema.parse({
+    fields: {
+      vendorName: { value: "Acme Auto Repair", confidence: 0.96 },
+      invoiceDate: { value: "2026-01-15", confidence: 0.94 },
+      totalAmount: { value: "2450.00", confidence: 0.95 },
+      lineItems: {
+        value: [{ desc: "Bumper repair", amount: "2450.00" }],
+        confidence: 0.93,
+      },
+    },
+    minConfidence: 0.93,
+    anomalies: [],
+  });
+}
+
+function lowConfidenceInvoice(): ExtractAgentOutput {
+  return ExtractAgentOutputSchema.parse({
+    fields: {
+      vendorName: { value: "Acme Auto Repair", confidence: 0.72 },
+      invoiceDate: { value: "2026-01-15", confidence: 0.68 },
+      totalAmount: { value: "2450.00", confidence: 0.71 },
+      lineItems: {
+        value: [{ desc: "Bumper repair", amount: "2450.00" }],
+        confidence: 0.7,
+      },
+    },
+    minConfidence: 0.68,
+    anomalies: ["total amount partially obscured"],
+  });
+}
+
+function highConfidencePoliceReport(): ExtractAgentOutput {
+  return ExtractAgentOutputSchema.parse({
+    fields: {
+      reportNumber: { value: "PR-2026-0042", confidence: 0.95 },
+      agency: { value: "Springfield PD", confidence: 0.94 },
+      incidentDate: { value: "2026-01-10", confidence: 0.92 },
+      narrativeSummary: {
+        value: "Vehicle reported stolen from residential driveway.",
+        confidence: 0.91,
+      },
+    },
+    minConfidence: 0.91,
+    anomalies: [],
+  });
+}
+
+function highConfidenceRepairEstimate(): ExtractAgentOutput {
+  return ExtractAgentOutputSchema.parse({
+    fields: {
+      shopName: { value: "Metro Body Shop", confidence: 0.94 },
+      estimateTotal: { value: "3200.00", confidence: 0.93 },
+      lines: {
+        value: [{ desc: "Panel replacement", amount: "3200.00" }],
+        confidence: 0.92,
+      },
+    },
+    minConfidence: 0.92,
+    anomalies: [],
+  });
+}
+
+async function resolveExtractScenario(fileRef: string): Promise<
+  "gateway-fail" | "schema-fail" | "injection" | "low-confidence" | null
+> {
+  const normalized = fileRef.toLowerCase();
+  if (normalized.includes("gateway-fail")) return "gateway-fail";
+  if (normalized.includes("schema-fail")) return "schema-fail";
+  if (normalized.includes("ignore instructions")) return "injection";
+  if (normalized.includes("low-confidence")) return "low-confidence";
+
+  const docIdMatch = fileRef.match(/\/documents\/([^/?]+)/);
+  if (!docIdMatch) {
+    return null;
+  }
+
+  try {
+    const { getDb } = await import("@/lib/db");
+    const { getDocumentById } = await import("@/lib/db/queries/documents-mutate");
+    const document = await getDocumentById(getDb(), docIdMatch[1]!);
+    if (!document) {
+      return null;
+    }
+    const storage = document.storagePath.toLowerCase();
+    if (storage.includes("gateway-fail")) return "gateway-fail";
+    if (storage.includes("low")) return "low-confidence";
+    if (storage.includes("ignore")) return "injection";
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function mockExtractResponse(input: ExtractAgentInput): Promise<ExtractAgentOutput> {
+  const scenario = await resolveExtractScenario(input.fileRef);
+
+  if (scenario === "gateway-fail") {
+    throw new ExtractAgentUnavailableError();
+  }
+
+  if (scenario === "schema-fail") {
+    return ExtractAgentOutputSchema.parse({
+      fields: { unexpectedField: { value: "bad", confidence: 0.5 } },
+      minConfidence: 0.5,
+      anomalies: [],
+    });
+  }
+
+  if (scenario === "injection") {
+    return highConfidenceInvoice();
+  }
+
+  if (scenario === "low-confidence") {
+    switch (input.docType) {
+      case "police_report":
+        return ExtractAgentOutputSchema.parse({
+          fields: {
+            reportNumber: { value: "PR-LOW-001", confidence: 0.65 },
+            agency: { value: "Metro PD", confidence: 0.62 },
+            incidentDate: { value: "2026-01-10", confidence: 0.6 },
+            narrativeSummary: { value: "Incident under review.", confidence: 0.58 },
+          },
+          minConfidence: 0.58,
+          anomalies: ["report number unclear"],
+        });
+      default:
+        return lowConfidenceInvoice();
+    }
+  }
+
+  switch (input.docType) {
+    case "invoice":
+      return highConfidenceInvoice();
+    case "police_report":
+      return highConfidencePoliceReport();
+    case "repair_estimate":
+      return highConfidenceRepairEstimate();
+    default:
+      throw new Error(`Unsupported extraction doc type: ${input.docType}`);
+  }
+}
+
 async function callLiveGateway<T>(
   request: AiGatewayRequest,
   parseOutput: (raw: unknown) => T,
@@ -84,7 +235,7 @@ async function callLiveGateway<T>(
 
 export async function callAiGateway(
   request: AiGatewayRequest,
-): Promise<AiGatewayResponse<IntakeAgentOutput>> {
+): Promise<AiGatewayResponse<unknown>> {
   if (request.agentId === "AGT-INTAKE") {
     const parsedInput = IntakeAgentInputSchema.parse(request.input);
 
@@ -101,6 +252,26 @@ export async function callAiGateway(
     return {
       output: mockIntakeResponse(parsedInput),
       model: "mock:agt-intake-v1",
+      latencyMs: 1,
+    };
+  }
+
+  if (request.agentId === "AGT-EXTRACT") {
+    const parsedInput = ExtractAgentInputSchema.parse(request.input);
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          ExtractAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        throw new ExtractAgentUnavailableError();
+      }
+    }
+
+    return {
+      output: await mockExtractResponse(parsedInput),
+      model: "mock:agt-extract-v1",
       latencyMs: 1,
     };
   }

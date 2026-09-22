@@ -142,7 +142,7 @@ export const ClaimItemSchema = z.object({
   claimedAmount: Money.optional(),
 });
 
-const DEFAULT_ALLOWED_MIMES = [
+export const DEFAULT_ALLOWED_MIMES = [
   "image/jpeg",
   "image/png",
   "image/webp",
@@ -151,7 +151,7 @@ const DEFAULT_ALLOWED_MIMES = [
 
 export const FileSchema = z.object({
   fileName: z.string().min(1).max(255),
-  mimeType: z.enum(DEFAULT_ALLOWED_MIMES),
+  mimeType: z.string().min(1),
   sizeBytes: z.int().positive(),
 });
 

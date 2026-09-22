@@ -16,6 +16,10 @@ const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
     roles: ["intake_agent", "adjuster", "supervisor", "admin"],
   },
   {
+    pattern: /^\/verify-extraction(\/|$)/,
+    roles: ["intake_agent", "adjuster", "supervisor", "admin"],
+  },
+  {
     pattern: /^\/queue(\/|$)/,
     roles: ["intake_agent", "adjuster", "supervisor", "siu_analyst", "admin"],
   },

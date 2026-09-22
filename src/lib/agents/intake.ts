@@ -36,7 +36,7 @@ export async function runIntakeAgent(
       promptVersion: PROMPT_VERSION,
       input: parsedInput,
     });
-    output = IntakeAgentOutputSchema.parse(gateway.output);
+    output = IntakeAgentOutputSchema.parse(gateway.output as unknown);
     model = gateway.model;
   } catch {
     status = "failed";
