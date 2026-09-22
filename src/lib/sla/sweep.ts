@@ -138,27 +138,39 @@ async function executeEscalationTier(
   breachCount: number,
   outputs: Record<string, unknown>,
   now: Date,
-): Promise<void> {
+): Promise<boolean> {
   const action =
     typeof outputs.action === "string" ? outputs.action : "unknown";
   const supervisorId = await findSupervisorUserId(db);
 
   if (action === "notify_assignee") {
     const assigneeId = await resolveNotifyUserId(db, timer);
-    if (assigneeId) {
-      await insertSlaNotification(db, {
-        userId: assigneeId,
-        claimId: timer.claimId,
-        taskId: timer.taskId,
-        kind: "sla_warning",
-        title: "SLA warning",
-        bodyMd: `SLA timer approaching breach for claim ${timer.claimId}.`,
-      });
+    if (!assigneeId) {
+      return false;
     }
+    await insertSlaNotification(db, {
+      userId: assigneeId,
+      claimId: timer.claimId,
+      taskId: timer.taskId,
+      kind: "sla_warning",
+      title: "SLA warning",
+      bodyMd: `SLA timer approaching breach for claim ${timer.claimId}.`,
+    });
+    await insertAuditLog(db, {
+      actor: "system:sla-sweep",
+      action: "sla_escalation",
+      entity: "sla_timers",
+      entityId: timer.id,
+      afterJson: { breach_count: breachCount, action },
+      at: now,
+    });
+    return true;
   }
 
   if (action === "notify_assignee_and_supervisor") {
     const assigneeId = await resolveNotifyUserId(db, timer);
+    let notificationsInserted = 0;
+
     if (assigneeId) {
       await insertSlaNotification(db, {
         userId: assigneeId,
@@ -168,6 +180,7 @@ async function executeEscalationTier(
         title: "SLA breached",
         bodyMd: `SLA timer breached for claim ${timer.claimId}.`,
       });
+      notificationsInserted += 1;
     }
     if (supervisorId && supervisorId !== assigneeId) {
       await insertSlaNotification(db, {
@@ -178,8 +191,10 @@ async function executeEscalationTier(
         title: "SLA breached",
         bodyMd: `SLA timer breached for claim ${timer.claimId}.`,
       });
+      notificationsInserted += 1;
     }
 
+    let priorityBumped = false;
     if (timer.taskId && typeof outputs.priority_bump === "number") {
       const [task] = await db
         .select({ priority: tasks.priority })
@@ -194,8 +209,23 @@ async function executeEscalationTier(
             updatedAt: now,
           })
           .where(eq(tasks.id, timer.taskId));
+        priorityBumped = true;
       }
     }
+
+    if (notificationsInserted === 0 && !priorityBumped) {
+      return false;
+    }
+
+    await insertAuditLog(db, {
+      actor: "system:sla-sweep",
+      action: "sla_escalation",
+      entity: "sla_timers",
+      entityId: timer.id,
+      afterJson: { breach_count: breachCount, action },
+      at: now,
+    });
+    return true;
   }
 
   if (action === "reassign") {
@@ -256,7 +286,6 @@ async function executeEscalationTier(
         queue: "supervision",
         assignedTo: escalationAssignee,
         payloadJson: { slaTimerId: timer.id, breach_count: breachCount },
-        slaTimerId: timer.id,
       });
     }
   }
@@ -273,7 +302,6 @@ async function executeEscalationTier(
         priority: rulePriority,
         assignedTo: supervisorId,
         payloadJson: { slaTimerId: timer.id, breach_count: breachCount },
-        slaTimerId: timer.id,
       });
     }
   }
@@ -286,6 +314,7 @@ async function executeEscalationTier(
     afterJson: { breach_count: breachCount, action },
     at: now,
   });
+  return true;
 }
 
 export async function runSlaSweep(
@@ -326,13 +355,24 @@ export async function runSlaSweep(
         { claimId: timer.claimId, actor: "system:sla-sweep", asOf: now },
       );
 
-      await executeEscalationTier(db, timer, step, escResult.outputs, now);
+      const applied = await executeEscalationTier(
+        db,
+        timer,
+        step,
+        escResult.outputs,
+        now,
+      );
+
+      if (!applied) {
+        break;
+      }
 
       await db
         .update(slaTimers)
         .set({ breachCount: step, updatedAt: now })
         .where(eq(slaTimers.id, timer.id));
 
+      timer.breachCount = step;
       escalated += 1;
     }
   }

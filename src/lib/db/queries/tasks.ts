@@ -58,11 +58,20 @@ export async function insertTask(
     })
     .returning();
 
-  await startSlaTimerForTask(db, {
+  const slaTimerId = await startSlaTimerForTask(db, {
     claimId: values.claimId,
     taskId: row.id,
     taskType: values.type,
   });
+
+  if (slaTimerId) {
+    const [linked] = await db
+      .update(tasks)
+      .set({ slaTimerId, updatedAt: new Date() })
+      .where(eq(tasks.id, row.id))
+      .returning();
+    return linked ?? row;
+  }
 
   return row;
 }

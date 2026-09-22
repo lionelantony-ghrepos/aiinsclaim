@@ -228,12 +228,14 @@ export async function resumePausedTimers(
       continue;
     }
     const pauseDurationMs = at.getTime() - timer.pausedAt.getTime();
+    const startedAt = new Date(timer.startedAt.getTime() + pauseDurationMs);
     const dueAt = new Date(timer.dueAt.getTime() + pauseDurationMs);
     await db
       .update(slaTimers)
       .set({
         status: "running",
         pausedAt: null,
+        startedAt,
         dueAt,
         updatedAt: at,
       })

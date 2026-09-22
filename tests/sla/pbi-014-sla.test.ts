@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { IsolatedDb } from "@/lib/db/isolated";
+import { listQueueTasks } from "@/lib/db/queries/tasks-queue";
 import { insertTask, updateTask } from "@/lib/db/queries/tasks";
 import {
   auditLog,
@@ -21,6 +22,7 @@ import {
   startSlaTimerForTrigger,
   SweepUnauthorizedError,
 } from "@/lib/sla";
+import { slaSweepElapsedRatio } from "@/lib/sla/elapsed";
 import { resolveParameterValue } from "@/lib/rules/params";
 import { slaDisplayElapsedRatio } from "@/lib/ui/task-labels";
 import { seedClaimTransitions } from "../../seed/loaders/transitions";
@@ -250,8 +252,12 @@ describe("PBI-014 SLA timers and escalation", () => {
     expect(assessmentTimer?.pausedAt?.getTime()).toBe(pauseAt.getTime());
     expect(decisionTimer?.status).toBe("running");
 
+    const originalStartedAt = assessmentTimer!.startedAt.getTime();
     const originalDueAt = assessmentTimer!.dueAt.getTime();
-    const resumeAt = new Date(pauseAt.getTime() + 3 * 60 * 60 * 1000);
+    const originalDurationMs = originalDueAt - originalStartedAt;
+    const pauseDurationMs = 3 * 60 * 60 * 1000;
+    const activeElapsedMs = pauseAt.getTime() - originalStartedAt;
+    const resumeAt = new Date(pauseAt.getTime() + pauseDurationMs);
     await resumePausedTimers(isolated.db, claimId, resumeAt);
 
     const [resumed] = await isolated.db
@@ -261,10 +267,16 @@ describe("PBI-014 SLA timers and escalation", () => {
 
     expect(resumed?.status).toBe("running");
     expect(resumed?.pausedAt).toBeNull();
-    expect(resumed!.dueAt.getTime()).toBe(originalDueAt + 3 * 60 * 60 * 1000);
+    expect(resumed!.startedAt.getTime()).toBe(originalStartedAt + pauseDurationMs);
+    expect(resumed!.dueAt.getTime()).toBe(originalDueAt + pauseDurationMs);
+    expect(slaSweepElapsedRatio(resumed!.startedAt, resumed!.dueAt, resumeAt)).toBeCloseTo(
+      activeElapsedMs / originalDurationMs,
+      5,
+    );
   });
 
   it("TC-014-03 escalation tiers fire at 75/100/150/200%", async () => {
+    await isolated.db.update(tasks).set({ slaTimerId: null });
     await isolated.db.delete(slaTimers);
     const { claimId } = await insertMinimalClaim(isolated.db);
     const { adjusterId, supervisorId } = await seedStaffUsers(isolated.db);
@@ -617,6 +629,148 @@ describe("PBI-014 SLA timers and escalation", () => {
       .from(slaTimers)
       .where(eq(slaTimers.taskId, cancelTaskId));
     expect(cancelTimer?.status).toBe("met");
+  });
+
+  it("links insertTask slaTimerId to the task_completion timer row", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const taskId = crypto.randomUUID();
+    const task = await insertTask(isolated.db, {
+      id: taskId,
+      claimId,
+      type: "review_triage",
+      queue: "adjusting",
+    });
+
+    const [timer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(
+        and(
+          eq(slaTimers.taskId, taskId),
+          eq(slaTimers.timerCode, "task_completion"),
+        ),
+      );
+
+    expect(timer).toBeDefined();
+    expect(task.slaTimerId).toBe(timer!.id);
+    expect(timer!.status).toBe("running");
+  });
+
+  it("retries warning tier when notify no-ops until a supervisor exists", async () => {
+    const supervisors = await isolated.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, "supervisor"));
+    const supervisorIds = supervisors.map((row) => row.id);
+
+    await isolated.db.delete(notifications);
+    if (supervisorIds.length > 0) {
+      await isolated.db
+        .update(tasks)
+        .set({ assignedTo: null })
+        .where(inArray(tasks.assignedTo, supervisorIds));
+      await isolated.db
+        .update(claims)
+        .set({ assignedTo: null })
+        .where(inArray(claims.assignedTo, supervisorIds));
+      await isolated.db
+        .delete(users)
+        .where(inArray(users.id, supervisorIds));
+    }
+
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const durationMs = 10 * 60 * 60 * 1000;
+    const { timerId } = await insertRunningTimer(isolated.db, {
+      claimId,
+      timerCode: "complete_triage",
+      durationMs,
+    });
+
+    const sweepAt75 = new Date(BASE_TIME.getTime() + durationMs * 0.76);
+    await runSlaSweep(isolated.db, { now: sweepAt75 });
+
+    const [timerAfterNoop] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(eq(slaTimers.id, timerId));
+    expect(timerAfterNoop?.breachCount).toBe(0);
+
+    const supervisorId = crypto.randomUUID();
+    await isolated.db.insert(users).values({
+      id: supervisorId,
+      email: `sup-retry-${supervisorId.slice(0, 8)}@test.local`,
+      passwordHash: "x",
+      displayName: "Retry Supervisor",
+      role: "supervisor",
+      isActive: true,
+      createdAt: BASE_TIME,
+      updatedAt: BASE_TIME,
+    });
+
+    await runSlaSweep(isolated.db, { now: sweepAt75 });
+
+    const [timerAfterRetry] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(eq(slaTimers.id, timerId));
+    expect(timerAfterRetry?.breachCount).toBe(1);
+
+    const warnRows = await isolated.db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.claimId, claimId),
+          eq(notifications.kind, "sla_warning"),
+        ),
+      );
+    expect(warnRows).toHaveLength(1);
+    expect(warnRows[0]?.userId).toBe(supervisorId);
+  });
+
+  it("excludes paused overdue timers from breached queue filter", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const taskId = crypto.randomUUID();
+    const slaId = crypto.randomUUID();
+    const now = BASE_TIME;
+
+    await isolated.db.insert(slaTimers).values({
+      id: slaId,
+      claimId,
+      timerCode: "complete_assessment",
+      startedAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
+      dueAt: new Date(now.getTime() - 60 * 60 * 1000),
+      pausedAt: new Date(now.getTime() - 30 * 60 * 1000),
+      status: "paused",
+    });
+    await isolated.db.insert(tasks).values({
+      id: taskId,
+      claimId,
+      type: "assess_claim",
+      queue: "adjusting",
+      status: "open",
+      slaTimerId: slaId,
+    });
+
+    const breached = await listQueueTasks(
+      isolated.db,
+      "adjusting",
+      { breachState: "breached" },
+      undefined,
+      25,
+      "adjuster",
+    );
+    expect(breached.items.some((item) => item.id === taskId)).toBe(false);
+
+    const ok = await listQueueTasks(
+      isolated.db,
+      "adjusting",
+      { breachState: "ok" },
+      undefined,
+      25,
+      "adjuster",
+    );
+    expect(ok.items.some((item) => item.id === taskId)).toBe(true);
   });
 
   it("freezes paused timer display elapsed ratio while clock advances", () => {

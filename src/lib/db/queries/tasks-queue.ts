@@ -186,7 +186,10 @@ function breachStateSqlFilter(
 
   if (breachState === "breached") {
     return (
-      or(eq(slaTimers.status, "breached"), lt(slaTimers.dueAt, now)) ?? sql`0 = 1`
+      or(
+        eq(slaTimers.status, "breached"),
+        and(lt(slaTimers.dueAt, now), ne(slaTimers.status, "paused")),
+      ) ?? sql`0 = 1`
     );
   }
 
@@ -196,6 +199,7 @@ function breachStateSqlFilter(
         sql`${slaTimers.dueAt} IS NOT NULL`,
         gt(slaTimers.dueAt, now),
         ne(slaTimers.status, "breached"),
+        ne(slaTimers.status, "paused"),
         lt(slaTimers.dueAt, warningThreshold),
       ) ?? sql`0 = 1`
     );
@@ -205,6 +209,7 @@ function breachStateSqlFilter(
     or(
       isNull(slaTimers.dueAt),
       eq(slaTimers.status, "met"),
+      eq(slaTimers.status, "paused"),
       and(
         gt(slaTimers.dueAt, now),
         ne(slaTimers.status, "breached"),
