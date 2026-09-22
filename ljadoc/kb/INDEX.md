@@ -42,7 +42,7 @@ GitHub issues: [PBIs #1–20](https://github.com/lionelantony-ghrepos/aiinsclaim
 | 013 | [PBI-013](as-built/PBI-013.md) | 2 | Shipped |
 | 014 | [PBI-014](as-built/PBI-014.md) | 2 | Shipped |
 | 015 | [PBI-015](as-built/PBI-015.md) | 2 | Shipped |
-| 016 | [PBI-016](as-built/PBI-016.md) | 2 | Planned |
+| 016 | [PBI-016](as-built/PBI-016.md) | 2 | Shipped |
 | 017 | [PBI-017](as-built/PBI-017.md) | 2 | Planned (Should) |
 | 018 | [PBI-018](as-built/PBI-018.md) | 2 | Planned (Should) |
 | 019 | [PBI-019](as-built/PBI-019.md) | 3 | Planned (Could) |
