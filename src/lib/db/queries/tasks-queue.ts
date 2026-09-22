@@ -32,10 +32,11 @@ import {
   type UserRole,
 } from "@/lib/db/schema";
 import type { QueueTaskFilters } from "@/lib/schemas/tasks";
+import { getParameter } from "@/lib/rules/params";
 import {
-  formatSlaRemaining,
   priorityLabel,
-  slaElapsedRatio,
+  slaDisplayElapsedRatio,
+  slaDisplayRemainingLabel,
   taskTypeLabel,
 } from "@/lib/ui/task-labels";
 import { slaVisualTone } from "@/lib/ui/sla-visual";
@@ -57,7 +58,7 @@ export type QueueTaskRow = {
   title: string;
   priorityLabel: string;
   slaRemainingLabel: string;
-  slaTone: "ok" | "warning" | "danger";
+  slaTone: "ok" | "warning" | "danger" | "paused";
   breachState: "ok" | "warning" | "breached";
   slaDueAt: Date | null;
   payloadJson: Record<string, unknown> | null;
@@ -73,6 +74,7 @@ type SlaFields = {
   dueAt: Date | null;
   startedAt: Date | null;
   status: SlaStatus | null;
+  pausedAt: Date | null;
 };
 
 function encodeCursor(priority: number, slaDueAt: Date | null, id: string): string {
@@ -88,17 +90,31 @@ function decodeCursor(cursor: string) {
   };
 }
 
-function breachStateForSla(sla: SlaFields): "ok" | "warning" | "breached" {
+function breachStateForSla(
+  sla: SlaFields,
+  warningRatio: number,
+  now = new Date(),
+): "ok" | "warning" | "breached" {
   if (!sla.dueAt) {
     return "ok";
   }
   if (sla.status === "breached") {
     return "breached";
   }
-  const ratio = slaElapsedRatio(sla.startedAt, sla.dueAt);
-  const tone = slaVisualTone({
+  const timer = {
     status: sla.status ?? "running",
+    pausedAt: sla.pausedAt,
+  };
+  const ratio = slaDisplayElapsedRatio(
+    sla.startedAt,
+    sla.dueAt,
+    timer,
+    now,
+  );
+  const tone = slaVisualTone({
+    status: timer.status,
     elapsedRatio: ratio,
+    warningRatio,
   });
   if (tone === "danger") {
     return "breached";
@@ -116,13 +132,24 @@ function mapQueueTaskRow(
     assigneeName: string | null;
     sla: SlaFields;
   },
+  warningRatio: number,
   now = new Date(),
 ): QueueTaskRow {
-  const breachState = breachStateForSla(row.sla);
-  const elapsedRatio = slaElapsedRatio(row.sla.startedAt, row.sla.dueAt, now);
-  const slaTone = slaVisualTone({
+  const timer = {
     status: row.sla.status ?? "running",
+    pausedAt: row.sla.pausedAt,
+  };
+  const breachState = breachStateForSla(row.sla, warningRatio, now);
+  const elapsedRatio = slaDisplayElapsedRatio(
+    row.sla.startedAt,
+    row.sla.dueAt,
+    timer,
+    now,
+  );
+  const slaTone = slaVisualTone({
+    status: timer.status,
     elapsedRatio,
+    warningRatio,
   });
 
   return {
@@ -139,7 +166,7 @@ function mapQueueTaskRow(
     assignedToName: row.assigneeName,
     title: taskTypeLabel(row.task.type),
     priorityLabel: priorityLabel(row.task.priority),
-    slaRemainingLabel: formatSlaRemaining(row.sla.dueAt, now),
+    slaRemainingLabel: slaDisplayRemainingLabel(row.sla.dueAt, timer, now),
     slaTone,
     breachState,
     slaDueAt: row.sla.dueAt,
@@ -150,10 +177,12 @@ function mapQueueTaskRow(
 
 function breachStateSqlFilter(
   breachState: NonNullable<QueueTaskFilters["breachState"]>,
+  warningRatio: number,
   now = new Date(),
 ): SQL {
   const nowMs = now.getTime();
-  const warningThreshold = sql`${nowMs} + (${slaTimers.dueAt} - ${slaTimers.startedAt}) * 0.25`;
+  const remainingFraction = 1 - warningRatio;
+  const warningThreshold = sql`${nowMs} + (${slaTimers.dueAt} - ${slaTimers.startedAt}) * ${remainingFraction}`;
 
   if (breachState === "breached") {
     return (
@@ -212,12 +241,18 @@ function cursorPredicate(cursor: string) {
   );
 }
 
+async function loadSlaWarningRatio(db: Db, asOf = new Date()) {
+  const param = await getParameter(db, "sla.esc.warning_ratio", asOf);
+  return Number(param.valueJson);
+}
+
 async function fetchQueueRows(
   db: Db,
   queue: TaskQueue,
   filters: QueueTaskFilters,
   cursor: string | undefined,
   limit: number,
+  warningRatio: number,
 ) {
   const conditions = [
     eq(tasks.queue, queue),
@@ -231,7 +266,7 @@ async function fetchQueueRows(
     conditions.push(eq(claims.claimType, filters.claimType));
   }
   if (filters.breachState) {
-    conditions.push(breachStateSqlFilter(filters.breachState));
+    conditions.push(breachStateSqlFilter(filters.breachState, warningRatio));
   }
   if (cursor) {
     conditions.push(cursorPredicate(cursor)!);
@@ -247,6 +282,7 @@ async function fetchQueueRows(
       slaDueAt: slaTimers.dueAt,
       slaStartedAt: slaTimers.startedAt,
       slaStatus: slaTimers.status,
+      slaPausedAt: slaTimers.pausedAt,
     })
     .from(tasks)
     .innerJoin(claims, eq(claims.id, tasks.claimId))
@@ -262,20 +298,24 @@ async function fetchQueueRows(
     .limit(limit + 1);
 
   const mapped = rows.map((row) =>
-    mapQueueTaskRow({
-      task: row.task,
-      claim: {
-        claimNumber: row.claimNumber,
-        claimType: row.claimType,
-        status: row.claimStatus,
+    mapQueueTaskRow(
+      {
+        task: row.task,
+        claim: {
+          claimNumber: row.claimNumber,
+          claimType: row.claimType,
+          status: row.claimStatus,
+        },
+        assigneeName: row.assigneeName,
+        sla: {
+          dueAt: row.slaDueAt,
+          startedAt: row.slaStartedAt,
+          status: row.slaStatus,
+          pausedAt: row.slaPausedAt,
+        },
       },
-      assigneeName: row.assigneeName,
-      sla: {
-        dueAt: row.slaDueAt,
-        startedAt: row.slaStartedAt,
-        status: row.slaStatus,
-      },
-    }),
+      warningRatio,
+    ),
   );
 
   const page = mapped.slice(0, limit);
@@ -303,7 +343,15 @@ export async function listQueueTasks(
     return { items: [], nextCursor: null, forbidden: true as const };
   }
 
-  const result = await fetchQueueRows(db, queue, filters, cursor, limit);
+  const warningRatio = await loadSlaWarningRatio(db);
+  const result = await fetchQueueRows(
+    db,
+    queue,
+    filters,
+    cursor,
+    limit,
+    warningRatio,
+  );
   return { ...result, forbidden: false as const };
 }
 
@@ -322,6 +370,7 @@ export async function getTaskWithClaim(
       slaDueAt: slaTimers.dueAt,
       slaStartedAt: slaTimers.startedAt,
       slaStatus: slaTimers.status,
+      slaPausedAt: slaTimers.pausedAt,
     })
     .from(tasks)
     .innerJoin(claims, eq(claims.id, tasks.claimId))
@@ -338,20 +387,26 @@ export async function getTaskWithClaim(
     return { forbidden: true as const };
   }
 
-  const mapped = mapQueueTaskRow({
-    task: row.task,
-    claim: {
-      claimNumber: row.claimNumber,
-      claimType: row.claimType,
-      status: row.claimStatus,
+  const warningRatio = await loadSlaWarningRatio(db);
+
+  const mapped = mapQueueTaskRow(
+    {
+      task: row.task,
+      claim: {
+        claimNumber: row.claimNumber,
+        claimType: row.claimType,
+        status: row.claimStatus,
+      },
+      assigneeName: row.assigneeName,
+      sla: {
+        dueAt: row.slaDueAt,
+        startedAt: row.slaStartedAt,
+        status: row.slaStatus,
+        pausedAt: row.slaPausedAt,
+      },
     },
-    assigneeName: row.assigneeName,
-    sla: {
-      dueAt: row.slaDueAt,
-      startedAt: row.slaStartedAt,
-      status: row.slaStatus,
-    },
-  });
+    warningRatio,
+  );
 
   return {
     forbidden: false as const,

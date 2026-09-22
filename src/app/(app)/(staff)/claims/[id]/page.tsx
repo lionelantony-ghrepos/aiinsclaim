@@ -10,9 +10,10 @@ import { getClaimForUser } from "@/lib/db/queries/claims";
 import { getLatestFraudScore } from "@/lib/db/queries/fraud-read";
 import { getTriageSummary } from "@/lib/db/queries/triage-read";
 import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
+import { getParameter } from "@/lib/rules/params";
 import {
-  formatSlaRemaining,
-  slaElapsedRatio,
+  slaDisplayElapsedRatio,
+  slaDisplayRemainingLabel,
 } from "@/lib/ui/task-labels";
 import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
 
@@ -69,6 +70,8 @@ export default async function StaffClaimDetailPage({
   const fraudScore = await getLatestFraudScore(db, claimId);
   const slaTimers = await listActiveSlaTimersForClaim(db, claimId);
   const now = new Date();
+  const warningRatioParam = await getParameter(db, "sla.esc.warning_ratio", now);
+  const warningRatio = Number(warningRatioParam.valueJson);
   const signalsJson = (fraudScore?.signalsJson ?? {}) as {
     scoreBreakdown?: { points: number; reasonCode?: string }[];
     agentSignals?: {
@@ -111,16 +114,17 @@ export default async function StaffClaimDetailPage({
               >
                 <span className="text-sm text-text-muted">
                   {timerCodeLabel(timer.timerCode)}
-                  {timer.status === "paused" ? " (paused)" : ""}
                 </span>
                 <SlaCountdown
-                  remainingLabel={formatSlaRemaining(timer.dueAt, now)}
+                  remainingLabel={slaDisplayRemainingLabel(timer.dueAt, timer, now)}
                   status={timer.status}
-                  elapsedRatio={slaElapsedRatio(
+                  elapsedRatio={slaDisplayElapsedRatio(
                     timer.startedAt,
                     timer.dueAt,
+                    timer,
                     now,
                   )}
+                  warningRatio={warningRatio}
                   testId={`sla-timer-${timer.id}`}
                 />
               </li>

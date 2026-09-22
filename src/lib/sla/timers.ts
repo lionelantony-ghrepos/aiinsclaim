@@ -1,8 +1,9 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/lib/db/client";
 import {
   claims,
   slaTimers,
+  tasks,
   type ClaimStatus,
   type Lob,
   type SlaStatus,
@@ -10,8 +11,8 @@ import {
 } from "@/lib/db/schema";
 import { evaluateRuleSet } from "@/lib/rules";
 import {
-  PAUSE_IN_PENDING_INFO_TIMER_CODES,
   slaTriggerForStatus,
+  slaTriggerForTimerCode,
   TIMER_CODE_BY_CLAIM_STATUS,
 } from "./constants";
 import { resolveSlaDurationMs } from "./duration";
@@ -151,20 +152,62 @@ export async function pausePendingInfoTimers(
   now?: Date,
 ): Promise<void> {
   const at = now ?? new Date();
-  await db
-    .update(slaTimers)
-    .set({ status: "paused", pausedAt: at, updatedAt: at })
+
+  const [claim] = await db
+    .select({ lineOfBusiness: claims.lineOfBusiness })
+    .from(claims)
+    .where(eq(claims.id, claimId))
+    .limit(1);
+
+  if (!claim) {
+    return;
+  }
+
+  const running = await db
+    .select()
+    .from(slaTimers)
     .where(
-      and(
-        eq(slaTimers.claimId, claimId),
-        eq(slaTimers.status, "running"),
-        or(
-          ...[...PAUSE_IN_PENDING_INFO_TIMER_CODES].map((code) =>
-            eq(slaTimers.timerCode, code),
-          ),
-        ),
-      ),
+      and(eq(slaTimers.claimId, claimId), eq(slaTimers.status, "running")),
     );
+
+  for (const timer of running) {
+    const trigger = slaTriggerForTimerCode(
+      timer.timerCode,
+      claim.lineOfBusiness,
+    );
+    if (!trigger) {
+      continue;
+    }
+
+    const inputs: Record<string, unknown> = {
+      trigger,
+      line_of_business: claim.lineOfBusiness,
+    };
+
+    if (timer.timerCode === "task_completion" && timer.taskId) {
+      const [task] = await db
+        .select({ type: tasks.type })
+        .from(tasks)
+        .where(eq(tasks.id, timer.taskId))
+        .limit(1);
+      if (task) {
+        inputs.task_type = task.type;
+      }
+    }
+
+    const result = await evaluateRuleSet(db, "BR-SLA-001", inputs, {
+      claimId,
+      actor: "system:sla",
+      asOf: at,
+    });
+
+    if (result.outputs.pause_in_pending_info === true) {
+      await db
+        .update(slaTimers)
+        .set({ status: "paused", pausedAt: at, updatedAt: at })
+        .where(eq(slaTimers.id, timer.id));
+    }
+  }
 }
 
 export async function resumePausedTimers(

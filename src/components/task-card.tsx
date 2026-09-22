@@ -15,6 +15,7 @@ const TONE_TO_BADGE = {
   ok: "success",
   warning: "warning",
   danger: "danger",
+  paused: "warning",
 } as const;
 
 export function TaskCard({

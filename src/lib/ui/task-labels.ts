@@ -1,4 +1,4 @@
-import type { TaskType } from "@/lib/db/schema/enums";
+import type { SlaStatus, TaskType } from "@/lib/db/schema/enums";
 
 const TASK_TYPE_LABELS: Record<TaskType, string> = {
   verify_extraction: "Verify extraction",
@@ -51,4 +51,31 @@ export function slaElapsedRatio(
   }
   const elapsed = now.getTime() - startedAt.getTime();
   return Math.min(1, Math.max(0, elapsed / total));
+}
+
+export function slaEffectiveNow(
+  timer: { status: SlaStatus; pausedAt: Date | null },
+  now = new Date(),
+): Date {
+  if (timer.status === "paused" && timer.pausedAt) {
+    return timer.pausedAt;
+  }
+  return now;
+}
+
+export function slaDisplayElapsedRatio(
+  startedAt: Date | null,
+  dueAt: Date | null,
+  timer: { status: SlaStatus; pausedAt: Date | null },
+  now = new Date(),
+): number {
+  return slaElapsedRatio(startedAt, dueAt, slaEffectiveNow(timer, now));
+}
+
+export function slaDisplayRemainingLabel(
+  dueAt: Date | null,
+  timer: { status: SlaStatus; pausedAt: Date | null },
+  now = new Date(),
+): string {
+  return formatSlaRemaining(dueAt, slaEffectiveNow(timer, now));
 }

@@ -9,9 +9,6 @@ export const TIMER_CODE_BY_CLAIM_STATUS: Partial<Record<ClaimStatus, string>> = 
   approved: "issue_payment",
 };
 
-/** Timer codes that pause while claim is in pending_info (BR-SLA-001). */
-export const PAUSE_IN_PENDING_INFO_TIMER_CODES = new Set(["complete_assessment"]);
-
 export const TIMER_CODE_LABELS: Record<string, string> = {
   acknowledge_claimant: "Acknowledge claimant",
   complete_triage: "Complete triage",
@@ -23,6 +20,30 @@ export const TIMER_CODE_LABELS: Record<string, string> = {
 
 export function timerCodeLabel(code: string): string {
   return TIMER_CODE_LABELS[code] ?? code.replaceAll("_", " ");
+}
+
+export function slaTriggerForTimerCode(
+  timerCode: string,
+  lineOfBusiness: "auto" | "property",
+): string | null {
+  switch (timerCode) {
+    case "acknowledge_claimant":
+      return "claim_submitted";
+    case "complete_triage":
+      return "claim_in_triage";
+    case "complete_assessment":
+      return lineOfBusiness === "auto"
+        ? "claim_in_assessment_auto"
+        : "claim_in_assessment_property";
+    case "issue_decision":
+      return "claim_in_settlement";
+    case "issue_payment":
+      return "claim_approved";
+    case "task_completion":
+      return "task_created";
+    default:
+      return null;
+  }
 }
 
 export function slaTriggerForStatus(

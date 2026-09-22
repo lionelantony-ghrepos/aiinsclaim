@@ -15,14 +15,16 @@ import {
   removeTempDir,
 } from "../helpers/isolated-db";
 import { insertTask } from "@/lib/db/queries/tasks";
+import { seedRulesAndParameters } from "../../seed/loaders/rules";
 
 let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
 
 describe("PBI-013 queue helpers", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     temp = createPushedClone();
     isolated = openPushedDb(temp.file);
+    await seedRulesAndParameters(isolated.db);
   }, 180_000);
 
   afterAll(() => {

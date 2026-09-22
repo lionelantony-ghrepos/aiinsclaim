@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { IsolatedDb } from "@/lib/db/isolated";
-import { insertTask } from "@/lib/db/queries/tasks";
+import { insertTask, updateTask } from "@/lib/db/queries/tasks";
 import {
   auditLog,
   claims,
@@ -14,6 +14,7 @@ import * as dbModule from "@/lib/db";
 import {
   assertSweepSecret,
   durationTotalMs,
+  handleClaimTransitionSla,
   pausePendingInfoTimers,
   resumePausedTimers,
   runSlaSweep,
@@ -21,6 +22,7 @@ import {
   SweepUnauthorizedError,
 } from "@/lib/sla";
 import { resolveParameterValue } from "@/lib/rules/params";
+import { slaDisplayElapsedRatio } from "@/lib/ui/task-labels";
 import { seedClaimTransitions } from "../../seed/loaders/transitions";
 import { seedRulesAndParameters } from "../../seed/loaders/rules";
 import { insertMinimalClaim } from "../helpers/pbi-004-fixtures";
@@ -463,5 +465,180 @@ describe("PBI-014 SLA timers and escalation", () => {
     }
 
     vi.resetModules();
+  });
+
+  it("starts issue_payment on claim_approved and property assessment duration", async () => {
+    const now = BASE_TIME;
+
+    const { claimId: approvedClaimId } = await insertMinimalClaim(isolated.db);
+    const payDuration = await resolveParameterValue(
+      isolated.db,
+      "sla.pay_days",
+      now,
+    );
+    await startSlaTimerForTrigger(isolated.db, {
+      claimId: approvedClaimId,
+      trigger: "claim_approved",
+      lineOfBusiness: "auto",
+      now,
+    });
+    const [payTimer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(
+        and(
+          eq(slaTimers.claimId, approvedClaimId),
+          eq(slaTimers.timerCode, "issue_payment"),
+        ),
+      );
+    expect(payTimer?.dueAt.getTime()).toBe(
+      now.getTime() + durationTotalMs(payDuration),
+    );
+
+    const { claimId: propertyClaimId } = await insertMinimalClaim(isolated.db);
+    await isolated.db
+      .update(claims)
+      .set({ lineOfBusiness: "property", claimType: "water_damage" })
+      .where(eq(claims.id, propertyClaimId));
+
+    const propertyDuration = await resolveParameterValue(
+      isolated.db,
+      "sla.assess_days.property",
+      now,
+    );
+    await startSlaTimerForTrigger(isolated.db, {
+      claimId: propertyClaimId,
+      trigger: "claim_in_assessment_property",
+      lineOfBusiness: "property",
+      now,
+    });
+    const [propertyTimer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(
+        and(
+          eq(slaTimers.claimId, propertyClaimId),
+          eq(slaTimers.timerCode, "complete_assessment"),
+        ),
+      );
+    expect(propertyTimer?.dueAt.getTime()).toBe(
+      now.getTime() + durationTotalMs(propertyDuration),
+    );
+  });
+
+  it("does not duplicate an open timer on second start", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const now = BASE_TIME;
+
+    await startSlaTimerForTrigger(isolated.db, {
+      claimId,
+      trigger: "claim_submitted",
+      lineOfBusiness: "auto",
+      now,
+    });
+    await startSlaTimerForTrigger(isolated.db, {
+      claimId,
+      trigger: "claim_submitted",
+      lineOfBusiness: "auto",
+      now,
+    });
+
+    const rows = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(
+        and(
+          eq(slaTimers.claimId, claimId),
+          eq(slaTimers.timerCode, "acknowledge_claimant"),
+        ),
+      );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.status).toBe("running");
+  });
+
+  it("marks stage timer met when leaving owning stage", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const now = BASE_TIME;
+
+    await startSlaTimerForTrigger(isolated.db, {
+      claimId,
+      trigger: "claim_in_triage",
+      lineOfBusiness: "auto",
+      now,
+    });
+
+    await handleClaimTransitionSla(isolated.db, {
+      claimId,
+      fromStatus: "in_triage",
+      toStatus: "in_assessment",
+      lineOfBusiness: "auto",
+      now,
+    });
+
+    const [triageTimer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(
+        and(
+          eq(slaTimers.claimId, claimId),
+          eq(slaTimers.timerCode, "complete_triage"),
+        ),
+      );
+    expect(triageTimer?.status).toBe("met");
+  });
+
+  it("marks task_completion met when task is done or cancelled", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const taskId = crypto.randomUUID();
+    await insertTask(isolated.db, {
+      id: taskId,
+      claimId,
+      type: "review_triage",
+      queue: "adjusting",
+    });
+
+    await updateTask(isolated.db, taskId, { status: "done" });
+    const [doneTimer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(eq(slaTimers.taskId, taskId));
+    expect(doneTimer?.status).toBe("met");
+
+    const cancelTaskId = crypto.randomUUID();
+    await insertTask(isolated.db, {
+      id: cancelTaskId,
+      claimId,
+      type: "assess_claim",
+      queue: "adjusting",
+    });
+    await updateTask(isolated.db, cancelTaskId, { status: "cancelled" });
+    const [cancelTimer] = await isolated.db
+      .select()
+      .from(slaTimers)
+      .where(eq(slaTimers.taskId, cancelTaskId));
+    expect(cancelTimer?.status).toBe("met");
+  });
+
+  it("freezes paused timer display elapsed ratio while clock advances", () => {
+    const startedAt = new Date("2026-06-15T08:00:00Z");
+    const dueAt = new Date("2026-06-16T08:00:00Z");
+    const pausedAt = new Date("2026-06-15T14:00:00Z");
+    const timer = { status: "paused" as const, pausedAt };
+
+    const ratioAtPause = slaDisplayElapsedRatio(
+      startedAt,
+      dueAt,
+      timer,
+      pausedAt,
+    );
+    const ratioLater = slaDisplayElapsedRatio(
+      startedAt,
+      dueAt,
+      timer,
+      new Date("2026-06-15T20:00:00Z"),
+    );
+
+    expect(ratioLater).toBe(ratioAtPause);
+    expect(ratioLater).toBeCloseTo(0.25, 5);
   });
 });

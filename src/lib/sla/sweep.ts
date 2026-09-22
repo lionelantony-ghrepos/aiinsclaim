@@ -180,18 +180,17 @@ async function executeEscalationTier(
       });
     }
 
-    if (timer.taskId) {
+    if (timer.taskId && typeof outputs.priority_bump === "number") {
       const [task] = await db
         .select({ priority: tasks.priority })
         .from(tasks)
         .where(eq(tasks.id, timer.taskId))
         .limit(1);
       if (task) {
-        const bump = Number(outputs.priority_bump ?? 1);
         await db
           .update(tasks)
           .set({
-            priority: Math.min(task.priority + bump, 5),
+            priority: task.priority + outputs.priority_bump,
             updatedAt: now,
           })
           .where(eq(tasks.id, timer.taskId));
@@ -255,7 +254,6 @@ async function executeEscalationTier(
         claimId: timer.claimId,
         type: "escalation",
         queue: "supervision",
-        priority: 3,
         assignedTo: escalationAssignee,
         payloadJson: { slaTimerId: timer.id, breach_count: breachCount },
         slaTimerId: timer.id,
@@ -264,19 +262,15 @@ async function executeEscalationTier(
   }
 
   if (action === "escalate_ops_dashboard") {
-    if (timer.taskId) {
-      await db
-        .update(tasks)
-        .set({ priority: 5, updatedAt: now })
-        .where(eq(tasks.id, timer.taskId));
-    }
-
     if (!(await escalationTaskExists(db, timer.id, breachCount))) {
+      const rulePriority =
+        typeof outputs.priority === "number" ? outputs.priority : undefined;
+
       await insertTask(db, {
         claimId: timer.claimId,
         type: "escalation",
         queue: "supervision",
-        priority: 5,
+        priority: rulePriority,
         assignedTo: supervisorId,
         payloadJson: { slaTimerId: timer.id, breach_count: breachCount },
         slaTimerId: timer.id,
@@ -300,7 +294,11 @@ export async function runSlaSweep(
 ): Promise<SlaSweepSummary> {
   const now = options.now ?? new Date();
   const tiers = await loadEscalationThresholds(db, now);
-  const breachRatio = tiers.find((t) => t.breachCount === 2)?.ratio ?? 1;
+  const breachTier = tiers.find((tier) => tier.breachCount === 2);
+  if (!breachTier) {
+    throw new Error("Missing sla.esc.breach_ratio tier configuration");
+  }
+  const breachRatio = breachTier.ratio;
 
   const timers = await db
     .select()
