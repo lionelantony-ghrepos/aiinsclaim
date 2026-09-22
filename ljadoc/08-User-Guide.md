@@ -2,6 +2,10 @@
 
 End-user narrative for the claims workspace. **Update this file only when user-visible UI or commands ship** (delta per PBI). Spec and agent docs stay in `ljadoc/PRD.md`, `ljadoc/DESIGN.md`, and `ljadoc/kb/`.
 
+## Assessment workbench (PBI-015)
+
+Adjusters open a claim from the queue to reach the assessment workbench (`/claims/[id]`), with tabs for Overview, Items, Documents, Financials, Timeline, and Tasks. The Overview shows triage and fraud cards plus a coverage panel (policy limit and deductible math). In Financials, **Suggest reserve** shows an AI proposal that never applies itself — confirm or edit the amounts to set the reserve. Large changes route to a supervisor for approval. Use **Request info** to ask the claimant for documents (the claim pauses until they reply), and **Complete assessment** to move toward settlement once the document checklist is satisfied.
+
 ## Current release (PBI-003)
 
 The Ledger workbench requires sign-in. Each demo role lands on its own home view and sees only the navigation items permitted for that role.
