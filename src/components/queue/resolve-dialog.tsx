@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type ResolveDialogProps = {
@@ -16,13 +16,24 @@ export function ResolveDialog({
   onClose,
   onSubmit,
 }: ResolveDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  if (!open) {
-    return null;
-  }
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    if (open) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [open]);
 
   const trimmed = reason.trim();
   const valid = trimmed.length >= 10;
@@ -48,14 +59,14 @@ export function ResolveDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={dialogRef}
+      className="w-full max-w-lg rounded-lg border border-border bg-surface p-4 shadow-lg backdrop:bg-bg/80"
       aria-labelledby="resolve-dialog-title"
       data-testid="resolve-dialog"
+      onClose={onClose}
     >
-      <div className="w-full max-w-lg rounded-lg border border-border bg-surface p-4 shadow-lg">
+      <div>
         <h2 id="resolve-dialog-title" className="text-lg font-semibold text-text">
           {title}
         </h2>
@@ -96,6 +107,6 @@ export function ResolveDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

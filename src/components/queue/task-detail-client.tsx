@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,65 +26,119 @@ type TaskDetailClientProps = {
 
 export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps) {
   const router = useRouter();
+  const [optimisticOverlay, setOptimisticOverlay] = useState<Partial<TaskWithClaim> | null>(
+    null,
+  );
+  const optimisticTask = optimisticOverlay ? { ...task, ...optimisticOverlay } : task;
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
-  const proposal = agentProposalFromPayload(task.payloadJson, task.title);
-  const isResolved = task.status === "done" || task.status === "cancelled";
+  const proposal = agentProposalFromPayload(
+    optimisticTask.payloadJson,
+    optimisticTask.title,
+  );
+  const isResolved =
+    optimisticTask.status === "done" || optimisticTask.status === "cancelled";
 
-  async function handleAccept() {
-    setPending(true);
-    setErrorMessage(null);
-    const result = await resolveTaskAction({
-      taskId: task.id,
-      resolution: "accepted",
-    });
-    setPending(false);
-    if (!result.ok) {
-      setErrorMessage(result.error.message);
-      return;
-    }
-    setStatusMessage("Proposal accepted.");
-    router.refresh();
-  }
+  const resolveMutation = useMutation({
+    mutationFn: async (input: {
+      resolution: "accepted" | "overridden";
+      resolutionReason?: string;
+    }) => {
+      const result = await resolveTaskAction({
+        taskId: optimisticTask.id,
+        resolution: input.resolution,
+        resolutionReason: input.resolutionReason,
+      });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async (input) => {
+      setOptimisticOverlay({
+        status: "done",
+        resolution: input.resolution,
+        resolutionReason: input.resolutionReason ?? null,
+      });
+    },
+    onError: (error) => {
+      setOptimisticOverlay(null);
+      setErrorMessage(error.message);
+    },
+    onSuccess: (_data, input) => {
+      setStatusMessage(
+        input.resolution === "accepted"
+          ? "Proposal accepted."
+          : "Proposal overridden.",
+      );
+    },
+    onSettled: () => {
+      setOptimisticOverlay(null);
+      router.refresh();
+    },
+  });
 
-  async function handleOverride(reason: string) {
-    setPending(true);
-    setErrorMessage(null);
-    const result = await resolveTaskAction({
-      taskId: task.id,
-      resolution: "overridden",
-      resolutionReason: reason,
-    });
-    setPending(false);
-    if (!result.ok) {
-      throw new Error(result.error.message);
-    }
-    setStatusMessage("Proposal overridden.");
-    router.refresh();
-  }
+  const claimMutation = useMutation({
+    mutationFn: async () => {
+      const result = await claimTaskAction({ taskId: optimisticTask.id });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async () => {
+      setOptimisticOverlay({
+        status: "in_progress",
+        assignedTo: currentUserId,
+      });
+    },
+    onError: (error) => {
+      setOptimisticOverlay(null);
+      setErrorMessage(error.message);
+    },
+    onSuccess: () => {
+      setStatusMessage("Task claimed.");
+    },
+    onSettled: () => {
+      setOptimisticOverlay(null);
+      router.refresh();
+    },
+  });
 
-  async function handleClaim() {
-    const result = await claimTaskAction({ taskId: task.id });
-    if (!result.ok) {
-      setErrorMessage(result.error.message);
-      return;
-    }
-    setStatusMessage("Task claimed.");
-    router.refresh();
-  }
+  const releaseMutation = useMutation({
+    mutationFn: async () => {
+      const result = await releaseTaskAction({ taskId: optimisticTask.id });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async () => {
+      setOptimisticOverlay({
+        status: "open",
+        assignedTo: null,
+        assignedToName: null,
+      });
+    },
+    onError: (error) => {
+      setOptimisticOverlay(null);
+      setErrorMessage(error.message);
+    },
+    onSuccess: () => {
+      setStatusMessage("Task released.");
+    },
+    onSettled: () => {
+      setOptimisticOverlay(null);
+      router.refresh();
+    },
+  });
 
-  async function handleRelease() {
-    const result = await releaseTaskAction({ taskId: task.id });
-    if (!result.ok) {
-      setErrorMessage(result.error.message);
-      return;
-    }
-    setStatusMessage("Task released.");
-    router.refresh();
-  }
+  const pending =
+    resolveMutation.isPending ||
+    claimMutation.isPending ||
+    releaseMutation.isPending;
 
   return (
     <div className="space-y-6" data-testid="task-detail">
@@ -95,19 +150,31 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
           >
             ← Back to queue
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold text-text">{task.title}</h1>
-          <p className="text-sm text-text-muted">Task {task.id.slice(0, 8)}</p>
+          <h1 className="mt-2 text-2xl font-semibold text-text">
+            {optimisticTask.title}
+          </h1>
+          <p className="text-sm text-text-muted">
+            Task {optimisticTask.id.slice(0, 8)}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!isResolved && task.status === "open" ? (
-            <Button variant="outline" onClick={() => void handleClaim()}>
+          {!isResolved && optimisticTask.status === "open" ? (
+            <Button
+              variant="outline"
+              onClick={() => claimMutation.mutate()}
+              disabled={pending}
+            >
               Claim task
             </Button>
           ) : null}
           {!isResolved &&
-          task.status === "in_progress" &&
-          task.assignedTo === currentUserId ? (
-            <Button variant="outline" onClick={() => void handleRelease()}>
+          optimisticTask.status === "in_progress" &&
+          optimisticTask.assignedTo === currentUserId ? (
+            <Button
+              variant="outline"
+              onClick={() => releaseMutation.mutate()}
+              disabled={pending}
+            >
               Release task
             </Button>
           ) : null}
@@ -125,11 +192,11 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <TaskCard
-          title={task.title}
-          claimNumber={task.claimNumber}
-          priorityLabel={task.priorityLabel}
-          slaRemainingLabel={task.slaRemainingLabel}
-          slaTone={task.slaTone}
+          title={optimisticTask.title}
+          claimNumber={optimisticTask.claimNumber}
+          priorityLabel={optimisticTask.priorityLabel}
+          slaRemainingLabel={optimisticTask.slaRemainingLabel}
+          slaTone={optimisticTask.slaTone}
         />
 
         <Card data-testid="claim-context-panel">
@@ -141,37 +208,43 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
               <dt className="text-text-muted">Claim number</dt>
               <dd>
                 <Link
-                  href={`/claims/${task.claimId}`}
+                  href={`/claims/${optimisticTask.claimId}`}
                   className="font-medium text-primary hover:underline"
                 >
-                  {task.claimNumber}
+                  {optimisticTask.claimNumber}
                 </Link>
               </dd>
             </div>
             <div>
               <dt className="text-text-muted">Status</dt>
               <dd>
-                <Badge tone="info">{CLAIM_STATUS_LABELS[task.claimStatus]}</Badge>
+                <Badge tone="info">
+                  {CLAIM_STATUS_LABELS[optimisticTask.claimStatus]}
+                </Badge>
               </dd>
             </div>
             <div>
               <dt className="text-text-muted">Claim type</dt>
-              <dd className="capitalize">{task.claimType.replaceAll("_", " ")}</dd>
+              <dd className="capitalize">
+                {optimisticTask.claimType.replaceAll("_", " ")}
+              </dd>
             </div>
             <div>
               <dt className="text-text-muted">Task status</dt>
-              <dd className="capitalize">{task.status.replaceAll("_", " ")}</dd>
+              <dd className="capitalize">
+                {optimisticTask.status.replaceAll("_", " ")}
+              </dd>
             </div>
-            {task.assignedToName ? (
+            {optimisticTask.assignedToName ? (
               <div>
                 <dt className="text-text-muted">Assigned to</dt>
-                <dd>{task.assignedToName}</dd>
+                <dd>{optimisticTask.assignedToName}</dd>
               </div>
             ) : null}
-            {task.resolution ? (
+            {optimisticTask.resolution ? (
               <div>
                 <dt className="text-text-muted">Resolution</dt>
-                <dd className="capitalize">{task.resolution}</dd>
+                <dd className="capitalize">{optimisticTask.resolution}</dd>
               </div>
             ) : null}
           </dl>
@@ -184,19 +257,23 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
           summary={proposal.summary}
           confidencePercent={proposal.confidencePercent}
           reasonCodes={proposal.reasonCodes}
-          onAccept={() => void handleAccept()}
+          onAccept={() =>
+            resolveMutation.mutate({ resolution: "accepted" })
+          }
           onOverride={() => setOverrideOpen(true)}
           disabled={pending}
         />
       ) : null}
 
-      {isResolved && task.resolution ? (
+      {isResolved && optimisticTask.resolution ? (
         <Card data-testid="task-resolution-summary">
           <CardHeader>
             <CardTitle>Resolved</CardTitle>
             <p className="text-sm text-text-muted capitalize">
-              {task.resolution}
-              {task.resolutionReason ? ` — ${task.resolutionReason}` : ""}
+              {optimisticTask.resolution}
+              {optimisticTask.resolutionReason
+                ? ` — ${optimisticTask.resolutionReason}`
+                : ""}
             </p>
           </CardHeader>
         </Card>
@@ -206,7 +283,12 @@ export function TaskDetailClient({ task, currentUserId }: TaskDetailClientProps)
         open={overrideOpen}
         title="Override agent proposal"
         onClose={() => setOverrideOpen(false)}
-        onSubmit={handleOverride}
+        onSubmit={async (reason) => {
+          await resolveMutation.mutateAsync({
+            resolution: "overridden",
+            resolutionReason: reason,
+          });
+        }}
       />
     </div>
   );

@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { IsolatedDb } from "@/lib/db/isolated";
-import { agentRuns, slaTimers, tasks } from "@/lib/db/schema";
+import { agentRuns, auditLog, notifications, slaTimers, tasks, users } from "@/lib/db/schema";
 import {
+  bulkReassignDb,
   listQueueTasks,
   resolveTaskDb,
 } from "@/lib/db/queries/tasks-queue";
@@ -176,5 +177,78 @@ describe("PBI-013 queue helpers", () => {
         true,
       );
     }
+  });
+
+  it("TC-013-05 bulkReassignDb updates assignee, notifications, and audit log", async () => {
+    const { claimId } = await insertMinimalClaim(isolated.db);
+    const actorId = crypto.randomUUID();
+    const assigneeId = crypto.randomUUID();
+    const now = new Date();
+
+    await isolated.db.insert(users).values([
+      {
+        id: actorId,
+        email: `actor-${actorId}@test.local`,
+        passwordHash: "x",
+        displayName: "Supervisor Actor",
+        role: "supervisor",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: assigneeId,
+        email: `assignee-${assigneeId}@test.local`,
+        passwordHash: "x",
+        displayName: "Adjuster Assignee",
+        role: "adjuster",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const task = await insertTask(isolated.db, {
+      claimId,
+      type: "review_triage",
+      queue: "adjusting",
+      priority: 4,
+      assignedTo: null,
+    });
+
+    const result = await bulkReassignDb(
+      isolated.db,
+      [task.id],
+      assigneeId,
+      actorId,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.count).toBe(1);
+    }
+
+    const [updatedTask] = await isolated.db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.id, task.id));
+    expect(updatedTask?.assignedTo).toBe(assigneeId);
+
+    const taskNotifications = await isolated.db
+      .select()
+      .from(notifications)
+      .where(
+        and(eq(notifications.taskId, task.id), eq(notifications.userId, assigneeId)),
+      );
+    expect(taskNotifications).toHaveLength(1);
+    expect(taskNotifications[0]?.kind).toBe("task_reassigned");
+
+    const auditRows = await isolated.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.entity, "task"), eq(auditLog.entityId, task.id)),
+      );
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]?.action).toBe("bulk_reassign_task");
+    expect(auditRows[0]?.actor).toBe(actorId);
+    expect(auditRows[0]?.afterJson).toEqual({ assignedTo: assigneeId });
   });
 });

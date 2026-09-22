@@ -5,11 +5,14 @@ import {
   eq,
   gt,
   inArray,
+  isNull,
   lt,
+  ne,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
-import { canAccessQueue } from "@/lib/auth/scope";
+import { canAccessQueue, queuesForRole } from "@/lib/auth/scope";
 import type { Db } from "@/lib/db/client";
 import {
   auditLog,
@@ -145,6 +148,43 @@ function mapQueueTaskRow(
   };
 }
 
+function breachStateSqlFilter(
+  breachState: NonNullable<QueueTaskFilters["breachState"]>,
+  now = new Date(),
+): SQL {
+  const nowMs = now.getTime();
+  const warningThreshold = sql`${nowMs} + (${slaTimers.dueAt} - ${slaTimers.startedAt}) * 0.25`;
+
+  if (breachState === "breached") {
+    return (
+      or(eq(slaTimers.status, "breached"), lt(slaTimers.dueAt, now)) ?? sql`0 = 1`
+    );
+  }
+
+  if (breachState === "warning") {
+    return (
+      and(
+        sql`${slaTimers.dueAt} IS NOT NULL`,
+        gt(slaTimers.dueAt, now),
+        ne(slaTimers.status, "breached"),
+        lt(slaTimers.dueAt, warningThreshold),
+      ) ?? sql`0 = 1`
+    );
+  }
+
+  return (
+    or(
+      isNull(slaTimers.dueAt),
+      eq(slaTimers.status, "met"),
+      and(
+        gt(slaTimers.dueAt, now),
+        ne(slaTimers.status, "breached"),
+        sql`${slaTimers.dueAt} >= ${warningThreshold}`,
+      ),
+    ) ?? sql`0 = 1`
+  );
+}
+
 function cursorPredicate(cursor: string) {
   const decoded = decodeCursor(cursor);
   const dueMs = decoded.slaDueAt?.getTime() ?? null;
@@ -189,6 +229,9 @@ async function fetchQueueRows(
   }
   if (filters.claimType) {
     conditions.push(eq(claims.claimType, filters.claimType));
+  }
+  if (filters.breachState) {
+    conditions.push(breachStateSqlFilter(filters.breachState));
   }
   if (cursor) {
     conditions.push(cursorPredicate(cursor)!);
@@ -235,13 +278,9 @@ async function fetchQueueRows(
     }),
   );
 
-  const filtered = filters.breachState
-    ? mapped.filter((row) => row.breachState === filters.breachState)
-    : mapped;
-
-  const page = filtered.slice(0, limit);
+  const page = mapped.slice(0, limit);
   const nextCursor =
-    filtered.length > limit
+    mapped.length > limit
       ? encodeCursor(
           page[page.length - 1]!.priority,
           page[page.length - 1]!.slaDueAt,
@@ -403,28 +442,35 @@ export async function resolveTaskDb(
 }
 
 export async function claimTaskDb(db: Db, taskId: string, userId: string) {
-  const [existing] = await db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.id, taskId))
-    .limit(1);
-
-  if (!existing) {
-    return { ok: false as const, code: "NOT_FOUND" as const };
-  }
-
-  if (existing.status !== "open") {
-    return { ok: false as const, code: "NOT_CLAIMABLE" as const };
-  }
-
-  await db
+  const result = await db
     .update(tasks)
     .set({
       status: "in_progress",
       assignedTo: userId,
       updatedAt: new Date(),
     })
-    .where(eq(tasks.id, taskId));
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        eq(tasks.status, "open"),
+        isNull(tasks.assignedTo),
+      ),
+    )
+    .returning({ id: tasks.id });
+
+  if (result.length === 0) {
+    const [existing] = await db
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+
+    if (!existing) {
+      return { ok: false as const, code: "NOT_FOUND" as const };
+    }
+
+    return { ok: false as const, code: "TASK_ALREADY_CLAIMED" as const };
+  }
 
   return { ok: true as const, taskId };
 }
@@ -463,7 +509,11 @@ export async function bulkReassignDb(
   actorId: string,
 ) {
   const [assignee] = await db
-    .select({ id: users.id, displayName: users.displayName })
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      role: users.role,
+    })
     .from(users)
     .where(eq(users.id, assignTo))
     .limit(1);
@@ -471,6 +521,8 @@ export async function bulkReassignDb(
   if (!assignee) {
     return { ok: false as const, code: "ASSIGNEE_NOT_FOUND" as const };
   }
+
+  const eligibleQueues = queuesForRole(assignee.role);
 
   const rows = await db
     .select({
@@ -483,6 +535,12 @@ export async function bulkReassignDb(
 
   if (rows.length !== taskIds.length) {
     return { ok: false as const, code: "NOT_FOUND" as const };
+  }
+
+  for (const row of rows) {
+    if (!eligibleQueues.includes(row.task.queue)) {
+      return { ok: false as const, code: "ASSIGNEE_INELIGIBLE" as const };
+    }
   }
 
   await db

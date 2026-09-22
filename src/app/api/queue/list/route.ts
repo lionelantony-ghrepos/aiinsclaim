@@ -54,12 +54,13 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    console.error("[queue-list] error:", error);
     return NextResponse.json(
       {
         ok: false,
         error: {
           code: "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: "An unexpected error occurred.",
         },
       },
       { status: 500 },

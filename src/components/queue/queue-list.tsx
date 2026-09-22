@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Circle, Clock3, Flag, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -15,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import type { TaskQueue } from "@/lib/db/schema/enums";
+import type { TaskQueue, TaskStatus } from "@/lib/db/schema/enums";
 import type { QueueTaskFilters } from "@/lib/schemas/tasks";
 import type { QueueTaskRow } from "@/lib/db/queries/tasks-queue";
 import { BulkReassignDialog } from "./bulk-reassign-dialog";
@@ -29,6 +30,11 @@ type QueueListProps = {
   pollSeconds: number;
   canBulkReassign: boolean;
   currentUserId: string;
+};
+
+type QueuePageData = {
+  items: QueueTaskRow[];
+  nextCursor: string | null;
 };
 
 function unwrap<T>(result: QueueActionResult<T>): T {
@@ -45,6 +51,13 @@ const QUEUE_LABELS: Record<TaskQueue, string> = {
   siu: "SIU",
 };
 
+function StatusIcon({ status }: { status: TaskStatus }) {
+  if (status === "in_progress") {
+    return <Loader2 aria-hidden className="size-3" />;
+  }
+  return <Circle aria-hidden className="size-3" />;
+}
+
 export function QueueList({
   initialQueue,
   permittedQueues,
@@ -54,11 +67,14 @@ export function QueueList({
   canBulkReassign,
   currentUserId,
 }: QueueListProps) {
+  const queryClient = useQueryClient();
   const [queue, setQueue] = useState(initialQueue);
   const [filters, setFilters] = useState<QueueTaskFilters>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+
+  const queueQueryKey = ["queue", queue, filters] as const;
 
   const pollQuery = useQuery({
     queryKey: ["queue-poll-seconds"],
@@ -68,7 +84,7 @@ export function QueueList({
   });
 
   const queueQuery = useQuery({
-    queryKey: ["queue", queue, filters],
+    queryKey: queueQueryKey,
     queryFn: async () =>
       unwrap(
         await fetchQueueAction({
@@ -89,25 +105,133 @@ export function QueueList({
 
   const items = queueQuery.data.items;
 
-  async function handleClaim(taskId: string) {
-    const result = await claimTaskAction({ taskId });
-    if (!result.ok) {
-      setStatusMessage(result.error.message);
-      return;
-    }
-    setStatusMessage("Task claimed.");
-    await queueQuery.refetch();
+  function optimisticUpdate(
+    updater: (items: QueueTaskRow[]) => QueueTaskRow[],
+  ) {
+    queryClient.setQueryData<QueuePageData>(queueQueryKey, (current) => {
+      if (!current) {
+        return current;
+      }
+      return { ...current, items: updater(current.items) };
+    });
   }
 
-  async function handleRelease(taskId: string) {
-    const result = await releaseTaskAction({ taskId });
-    if (!result.ok) {
-      setStatusMessage(result.error.message);
-      return;
-    }
-    setStatusMessage("Task released.");
-    await queueQuery.refetch();
-  }
+  const claimMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const result = await claimTaskAction({ taskId });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: queueQueryKey });
+      const previous = queryClient.getQueryData<QueuePageData>(queueQueryKey);
+      optimisticUpdate((currentItems) =>
+        currentItems.map((item) =>
+          item.id === taskId
+            ? {
+                ...item,
+                status: "in_progress" as const,
+                assignedTo: currentUserId,
+              }
+            : item,
+        ),
+      );
+      return { previous };
+    },
+    onError: (error, _taskId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queueQueryKey, context.previous);
+      }
+      setStatusMessage(error.message);
+    },
+    onSuccess: () => {
+      setStatusMessage("Task claimed.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey });
+    },
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const result = await releaseTaskAction({ taskId });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: queueQueryKey });
+      const previous = queryClient.getQueryData<QueuePageData>(queueQueryKey);
+      optimisticUpdate((currentItems) =>
+        currentItems.map((item) =>
+          item.id === taskId
+            ? {
+                ...item,
+                status: "open" as const,
+                assignedTo: null,
+                assignedToName: null,
+              }
+            : item,
+        ),
+      );
+      return { previous };
+    },
+    onError: (error, _taskId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queueQueryKey, context.previous);
+      }
+      setStatusMessage(error.message);
+    },
+    onSuccess: () => {
+      setStatusMessage("Task released.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey });
+    },
+  });
+
+  const bulkReassignMutation = useMutation({
+    mutationFn: async (assignTo: string) => {
+      const result = await bulkReassignAction({
+        taskIds: selectedIds,
+        assignTo,
+      });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
+      return result.data;
+    },
+    onMutate: async (assignTo) => {
+      await queryClient.cancelQueries({ queryKey: queueQueryKey });
+      const previous = queryClient.getQueryData<QueuePageData>(queueQueryKey);
+      const assigneeName =
+        assigneesQuery.data?.find((assignee) => assignee.id === assignTo)
+          ?.displayName ?? null;
+      optimisticUpdate((currentItems) =>
+        currentItems.map((item) =>
+          selectedIds.includes(item.id)
+            ? { ...item, assignedTo: assignTo, assignedToName: assigneeName }
+            : item,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _assignTo, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queueQueryKey, context.previous);
+      }
+    },
+    onSuccess: (data) => {
+      setSelectedIds([]);
+      setStatusMessage(`Reassigned ${data.count} tasks.`);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey });
+    },
+  });
 
   function toggleSelected(taskId: string) {
     setSelectedIds((current) =>
@@ -199,7 +323,10 @@ export function QueueList({
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge tone="default">Priority {item.priorityLabel}</Badge>
+                    <Badge tone="default">
+                      <Flag aria-hidden />
+                      Priority {item.priorityLabel}
+                    </Badge>
                     <Badge
                       tone={
                         item.slaTone === "ok"
@@ -209,9 +336,13 @@ export function QueueList({
                             : "danger"
                       }
                     >
+                      <Clock3 aria-hidden />
                       SLA {item.slaRemainingLabel}
                     </Badge>
-                    <Badge tone="info">{item.status.replaceAll("_", " ")}</Badge>
+                    <Badge tone="info">
+                      <StatusIcon status={item.status} />
+                      {item.status.replaceAll("_", " ")}
+                    </Badge>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -219,7 +350,8 @@ export function QueueList({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => void handleClaim(item.id)}
+                      onClick={() => claimMutation.mutate(item.id)}
+                      disabled={claimMutation.isPending}
                       data-testid={`queue-claim-${item.id}`}
                     >
                       Claim
@@ -229,7 +361,8 @@ export function QueueList({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => void handleRelease(item.id)}
+                      onClick={() => releaseMutation.mutate(item.id)}
+                      disabled={releaseMutation.isPending}
                       data-testid={`queue-release-${item.id}`}
                     >
                       Release
@@ -256,16 +389,7 @@ export function QueueList({
           assignees={assigneesQuery.data ?? []}
           onClose={() => setBulkOpen(false)}
           onSubmit={async (assignTo) => {
-            const result = await bulkReassignAction({
-              taskIds: selectedIds,
-              assignTo,
-            });
-            if (!result.ok) {
-              throw new Error(result.error.message);
-            }
-            setSelectedIds([]);
-            setStatusMessage(`Reassigned ${result.data.count} tasks.`);
-            await queueQuery.refetch();
+            await bulkReassignMutation.mutateAsync(assignTo);
           }}
         />
       ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type AssigneeOption = {
@@ -24,13 +24,24 @@ export function BulkReassignDialog({
   onClose,
   onSubmit,
 }: BulkReassignDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [assignTo, setAssignTo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  if (!open) {
-    return null;
-  }
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    if (open) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [open]);
 
   async function handleSubmit() {
     if (!assignTo) {
@@ -55,14 +66,14 @@ export function BulkReassignDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
-      role="dialog"
-      aria-modal="true"
+    <dialog
+      ref={dialogRef}
+      className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg backdrop:bg-bg/80"
       aria-labelledby="bulk-reassign-title"
       data-testid="bulk-reassign-dialog"
+      onClose={onClose}
     >
-      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-lg">
+      <div>
         <h2 id="bulk-reassign-title" className="text-lg font-semibold text-text">
           Bulk reassign
         </h2>
@@ -104,6 +115,6 @@ export function BulkReassignDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

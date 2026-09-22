@@ -64,11 +64,12 @@ function actionError(error: unknown): QueueActionResult<never> {
   if (error instanceof Error && error.message === "UNAUTHORIZED") {
     return { ok: false, error: { code: "UNAUTHORIZED", message: "Unauthorized" } };
   }
+  console.error("[queue-action] error:", error);
   return {
     ok: false,
     error: {
       code: "INTERNAL_ERROR",
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: "An unexpected error occurred.",
     },
   };
 }
