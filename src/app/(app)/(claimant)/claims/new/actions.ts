@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
+import { eq } from "drizzle-orm";
 import { canAccessClaim } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/auth/session";
 import { runIntakeAgent } from "@/lib/agents/intake";
 import { getDb } from "@/lib/db";
+import { documents } from "@/lib/db/schema";
 import {
   createDraftClaim,
   getDraftClaimDetail,
@@ -14,7 +16,8 @@ import {
   updateDraftClaim,
   uploadDraftDocument,
 } from "@/lib/db/queries/intake";
-import { getParameter } from "@/lib/rules/params";
+import { validateUploadFile } from "@/lib/documents/validate-upload";
+import { processDocumentExtraction } from "@/lib/extraction/pipeline";
 import {
   createDraftClaimSchema,
   runIntakeCopilotSchema,
@@ -346,7 +349,12 @@ export async function getFnolChecklistAction(
 export async function uploadDocumentAction(
   formData: FormData,
 ): Promise<
-  ClaimActionResult<Awaited<ReturnType<typeof uploadDraftDocument>>>
+  ClaimActionResult<
+    Awaited<ReturnType<typeof uploadDraftDocument>> & {
+      extractionOutcome: string | null;
+      extractionSkipped: boolean;
+    }
+  >
 > {
   try {
     const user = await requireRole("claimant");
@@ -380,14 +388,16 @@ export async function uploadDocumentAction(
       };
     }
 
-    const maxBytesParam = await getParameter(db, "doc.max_bytes");
-    const maxBytes = Number(maxBytesParam.valueJson);
-    if (parsedMeta.file.sizeBytes > maxBytes) {
+    const uploadCheck = await validateUploadFile(db, {
+      mimeType: parsedMeta.file.mimeType,
+      sizeBytes: parsedMeta.file.sizeBytes,
+    });
+    if (!uploadCheck.ok) {
       return {
         ok: false,
         error: {
-          code: "VALIDATION_FAILED",
-          message: `File exceeds maximum size of ${maxBytes} bytes`,
+          code: uploadCheck.code,
+          message: uploadCheck.message,
         },
       };
     }
@@ -403,8 +413,23 @@ export async function uploadDocumentAction(
       uploadedBy: user.id,
     });
 
+    const extraction = await processDocumentExtraction(db, data.id);
+    const [updatedDoc] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, data.id))
+      .limit(1);
+
     revalidatePath("/claims/new");
-    return { ok: true, data };
+    return {
+      ok: true,
+      data: {
+        ...(updatedDoc ?? data),
+        extractionOutcome:
+          "outcome" in extraction ? (extraction.outcome ?? null) : null,
+        extractionSkipped: extraction.skipped,
+      },
+    };
   } catch (error) {
     return actionError(error);
   }

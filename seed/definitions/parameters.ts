@@ -171,6 +171,12 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     description: "Maximum upload size in bytes",
   },
   {
+    key: "doc.allowed_mimes",
+    valueJson: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+    valueType: "string",
+    description: "Allowed MIME types for document upload",
+  },
+  {
     key: "doc.autoaccept_confidence",
     valueJson: 0.9,
     valueType: "number",

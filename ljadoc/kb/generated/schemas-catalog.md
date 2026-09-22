@@ -2,6 +2,14 @@
 
 Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 
+- agents/extract.ts: EstimateLineSchema
+- agents/extract.ts: ExtractAgentEnvelopeSchema
+- agents/extract.ts: ExtractAgentInputSchema
+- agents/extract.ts: ExtractAgentOutputSchema
+- agents/extract.ts: ExtractionInvoiceSchema
+- agents/extract.ts: ExtractionPoliceReportSchema
+- agents/extract.ts: ExtractionRepairEstimateSchema
+- agents/extract.ts: VerifyExtractionSchema
 - agents/intake.ts: IntakeAgentInputSchema
 - agents/intake.ts: IntakeAgentOutputSchema
 - agents/intake.ts: IntakeChecklistStateSchema

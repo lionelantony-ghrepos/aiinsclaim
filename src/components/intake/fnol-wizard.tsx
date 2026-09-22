@@ -6,6 +6,7 @@ import { ClaimStatusTimeline } from "@/components/claim-status-timeline";
 import { FnolChecklist } from "@/components/intake/fnol-checklist";
 import { IncidentForm } from "@/components/intake/incident-form";
 import { IntakeCopilotPanel } from "@/components/intake/intake-copilot-panel";
+import { DocumentStatusBadge } from "@/components/documents/document-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +81,16 @@ export type FnolWizardActions = {
       confidence: number;
     }>
   >;
-  uploadDocument: (formData: FormData) => Promise<ClaimActionResult<{ id: string }>>;
+  uploadDocument: (
+    formData: FormData,
+  ) => Promise<
+    ClaimActionResult<{
+      id: string;
+      mimeType: string;
+      sizeBytes: number;
+      status: string;
+    }>
+  >;
   getChecklist: (claimId: string) => Promise<ClaimActionResult<FnolChecklistItem[]>>;
   searchPolicies?: (query: string) => Promise<ClaimActionResult<StaffPolicyHit[]>>;
 };
@@ -393,8 +403,9 @@ export function FnolWizard({
         {
           id: result.data.id,
           docType: uploadDocType,
-          mimeType: "application/octet-stream",
-          sizeBytes: 0,
+          mimeType: result.data.mimeType,
+          sizeBytes: result.data.sizeBytes,
+          status: result.data.status,
         },
       ],
     }));
@@ -891,8 +902,12 @@ export function FnolWizard({
                       key={doc.id}
                       className="rounded-md border border-border px-3 py-2"
                     >
-                      <span className="font-medium">{doc.docType.replaceAll("_", " ")}</span>
-                      <span className="text-text-muted"> — uploaded</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">
+                          {doc.docType.replaceAll("_", " ")}
+                        </span>
+                        <DocumentStatusBadge status={doc.status ?? "uploaded"} />
+                      </div>
                     </li>
                   ))}
                 </ul>
