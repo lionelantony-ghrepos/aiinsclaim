@@ -10,6 +10,10 @@ Adjusters open a claim from the queue to reach the assessment workbench (`/claim
 
 On a claim in settlement, the Financials tab shows the settlement workbench. **Propose settlement** uses assessed item amounts minus the deductible. **Approve settlement** runs authority rules server-side: within authority the claim moves to approved; above authority a banner notes routing to supervision and a supervisor task appears; an active SIU hold blocks approval with a visible SIU banner. After approval, **Issue payment** records a mock ACH or check payment (reference shown) and moves the claim to paid. **Close claim** succeeds only when the closure checklist passes (no open tasks). **Deny** asks for a coded reason plus a short note, then creates a supervisor confirmation task; only after the supervisor accepts does the claim become denied (claimant is notified along the way).
 
+## Communications drafts (PBI-020)
+
+Staff can open the **Communications** tab on a claim to generate an acknowledgement, information request, or decision-letter draft from the approved template and claim summary. Review and edit the draft, then save it to the mock outbox; generation and saving never send a message. **Send mock communication** records an explicit human-approved mock send. Decision letters retain the claim’s coded denial reason.
+
 ## Current release (PBI-003)
 
 The Ledger workbench requires sign-in. Each demo role lands on its own home view and sees only the navigation items permitted for that role.

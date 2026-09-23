@@ -12,6 +12,7 @@ import type {
   ReserveKind,
   ReserveSource,
   SettlementStatus,
+  NotificationStatus,
   RuleActionType,
   RuleOperator,
   RuleVersionStatus,
@@ -345,6 +346,13 @@ export const notifications = sqliteTable("notifications", {
   kind: text("kind").notNull(),
   title: text("title").notNull(),
   bodyMd: text("body_md").notNull(),
+  deliveryStatus: text("delivery_status")
+    .$type<NotificationStatus>()
+    .notNull()
+    .default("not_applicable"),
+  draftType: text("draft_type"),
+  templateId: text("template_id"),
+  agentRunId: text("agent_run_id").references(() => agentRuns.id),
   readAt: integer("read_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()

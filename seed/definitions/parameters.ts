@@ -290,4 +290,45 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     valueType: "number",
     description: "Max rows returned by claims copilot",
   },
+  {
+    key: "copilot.timeout_ms",
+    valueJson: 30000,
+    valueType: "number",
+    description: "Read-only claims copilot query timeout",
+  },
+  {
+    key: "agents.timeout_ms",
+    valueJson: 30000,
+    valueType: "number",
+    description: "AI agent gateway request timeout",
+  },
+  {
+    key: "agents.AGT-COMMS.enabled",
+    valueJson: true,
+    valueType: "boolean",
+    description: "Whether live AGT-COMMS gateway calls are enabled",
+  },
+  {
+    key: "agents.failure_alert_count",
+    valueJson: 3,
+    valueType: "number",
+    description:
+      "Failed agent runs within the failure window before an agent is disabled",
+  },
+  {
+    key: "agents.failure_window",
+    valueJson: "1h",
+    valueType: "duration",
+    description: "Window used to count repeated failed agent runs",
+  },
+  {
+    key: "agents.AGT-COMMS.manual_review_task",
+    valueJson: {
+      type: "assess_claim",
+      queue: "adjusting",
+      priority: 3,
+    },
+    valueType: "json",
+    description: "Task routing for AGT-COMMS manual review fallback",
+  },
 ];

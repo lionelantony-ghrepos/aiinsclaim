@@ -29,11 +29,26 @@ import {
   type SummaryAgentInput,
   type SummaryAgentOutput,
 } from "@/lib/schemas/agents/summary";
+import {
+  CopilotAgentInputSchema,
+  CopilotAgentOutputSchema,
+  type CopilotAgentInput,
+  type CopilotAgentOutput,
+} from "@/lib/schemas/agents/copilot";
+import {
+  CommsAgentInputSchema,
+  CommsAgentOutputSchema,
+  type CommsAgentInput,
+  type CommsAgentOutput,
+} from "@/lib/schemas/agents/comms";
+import type { Db } from "@/lib/db/client";
+import { getParameter } from "@/lib/rules/params";
 
 export type AiGatewayRequest = {
   agentId: string;
   promptVersion: string;
   input: unknown;
+  db?: Db;
 };
 
 export type AiGatewayResponse<T> = {
@@ -44,6 +59,26 @@ export type AiGatewayResponse<T> = {
 
 function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function mockCopilotResponse(input: CopilotAgentInput): CopilotAgentOutput {
+  const question = input.question.toLowerCase();
+  if (question.includes("fraud")) {
+    return CopilotAgentOutputSchema.parse({
+      sql: "SELECT fraud_band, COUNT(*) AS claim_count FROM vw_fraud_summary GROUP BY fraud_band ORDER BY claim_count DESC",
+      explanation: "Grouped claims by the reported fraud band.",
+    });
+  }
+  if (question.includes("sla") || question.includes("breach")) {
+    return CopilotAgentOutputSchema.parse({
+      sql: "SELECT claim_number, timer_code, status, due_at FROM vw_sla_status ORDER BY due_at ASC",
+      explanation: "Listed SLA timers in due-date order.",
+    });
+  }
+  return CopilotAgentOutputSchema.parse({
+    sql: "SELECT claim_number, line_of_business, status, estimated_amount FROM vw_claims_reporting ORDER BY claim_number",
+    explanation: "Listed claim reporting fields for the claims portfolio.",
+  });
 }
 
 function mockIntakeResponse(input: IntakeAgentInput): IntakeAgentOutput {
@@ -68,6 +103,46 @@ function mockIntakeResponse(input: IntakeAgentInput): IntakeAgentOutput {
     summaryDraft: summaryDraft.slice(0, 1200),
     completenessHints: hints,
     confidence: missing.length === 0 ? 0.82 : 0.55,
+  });
+}
+
+function mockCommsResponse(input: CommsAgentInput): CommsAgentOutput {
+  if (input.claimFacts.claimId.includes("schema-fail")) {
+    return { subject: "", bodyMd: "", templateId: input.template.templateId, readingLevel: "invalid" } as unknown as CommsAgentOutput;
+  }
+
+  const claimLabel = `${input.claimFacts.claimNumber} (${input.claimFacts.claimType})`;
+  const summary = input.claimSummaryMd || "No claim summary is available.";
+  const reason =
+    input.draftType === "decision_letter"
+      ? ` Coded denial reason: ${input.claimFacts.denialReasonCode}.`
+      : "";
+  const subject =
+    input.draftType === "acknowledgement"
+      ? `Acknowledgement for claim ${input.claimFacts.claimNumber}`
+      : input.draftType === "information_request"
+        ? `Information needed for claim ${input.claimFacts.claimNumber}`
+        : `Decision for claim ${input.claimFacts.claimNumber}`;
+  const bodyMd = [
+    `## ${subject}`,
+    "",
+    `This ${input.draftType.replaceAll("_", " ")} concerns ${claimLabel}.`,
+    reason,
+    "",
+    "Claim summary:",
+    summary,
+    "",
+    `Template context: ${input.template.subject}\n${input.template.bodyMd}`,
+  ]
+    .join("\n")
+    .slice(0, 6000);
+
+  return CommsAgentOutputSchema.parse({
+    subject,
+    bodyMd,
+    templateId: input.template.templateId,
+    readingLevel: input.readingLevel,
+    tone: input.tone,
   });
 }
 
@@ -218,6 +293,7 @@ async function mockExtractResponse(input: ExtractAgentInput): Promise<ExtractAge
 async function callLiveGateway<T>(
   request: AiGatewayRequest,
   parseOutput: (raw: unknown) => T,
+  timeoutMs?: number,
 ): Promise<AiGatewayResponse<T>> {
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL;
@@ -226,29 +302,62 @@ async function callLiveGateway<T>(
   }
 
   const started = Date.now();
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/agents/run`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-  });
+  const controller = timeoutMs === undefined ? undefined : new AbortController();
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : undefined;
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/agents/run`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        agentId: request.agentId,
+        promptVersion: request.promptVersion,
+        input: request.input,
+      }),
+      signal: controller?.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(`AI gateway error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`AI gateway error: ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      output?: unknown;
+      model?: string;
+    };
+
+    return {
+      output: parseOutput(payload.output),
+      model: payload.model ?? "unknown",
+      latencyMs: Date.now() - started,
+    };
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
+}
 
-  const payload = (await response.json()) as {
-    output?: unknown;
-    model?: string;
-  };
-
-  return {
-    output: parseOutput(payload.output),
-    model: payload.model ?? "unknown",
-    latencyMs: Date.now() - started,
-  };
+async function readCommsGatewayConfig(db: Db): Promise<{
+  enabled: boolean;
+  timeoutMs: number;
+}> {
+  const enabledParameter = await getParameter(db, "agents.AGT-COMMS.enabled");
+  const timeoutParameter = await getParameter(db, "agents.timeout_ms");
+  const enabled = enabledParameter.valueJson;
+  const timeoutMs = Number(timeoutParameter.valueJson);
+  if (
+    typeof enabled !== "boolean" ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0
+  ) {
+    throw new Error("Invalid AGT-COMMS gateway configuration");
+  }
+  return { enabled, timeoutMs };
 }
 
 export async function callAiGateway(
@@ -362,6 +471,51 @@ export async function callAiGateway(
     return {
       output: mockSummaryResponse(parsedInput),
       model: "mock:agt-summary-v1",
+      latencyMs: 1,
+    };
+  }
+
+  if (request.agentId === "AGT-COPILOT") {
+    const parsedInput = CopilotAgentInputSchema.parse(request.input);
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          CopilotAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        // Deterministic mock keeps the learning stack available without a key.
+      }
+    }
+
+    return {
+      output: mockCopilotResponse(parsedInput),
+      model: "mock:agt-copilot-v1",
+      latencyMs: 1,
+    };
+  }
+
+  if (request.agentId === "AGT-COMMS") {
+    const parsedInput = CommsAgentInputSchema.parse(request.input);
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      if (!request.db) {
+        throw new Error("AGT-COMMS gateway configuration unavailable");
+      }
+      const config = await readCommsGatewayConfig(request.db);
+      if (!config.enabled) {
+        throw new Error("AGT-COMMS is disabled");
+      }
+      return await callLiveGateway(
+        request,
+        (raw) => CommsAgentOutputSchema.parse(raw),
+        config.timeoutMs,
+      );
+    }
+
+    return {
+      output: mockCommsResponse(parsedInput),
+      model: "mock:agt-comms-v1",
       latencyMs: 1,
     };
   }

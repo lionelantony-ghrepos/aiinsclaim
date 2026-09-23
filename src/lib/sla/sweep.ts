@@ -110,6 +110,7 @@ async function insertSlaNotification(
     kind: params.kind,
     title: params.title,
     bodyMd: params.bodyMd,
+    deliveryStatus: "not_applicable",
   });
 }
 
