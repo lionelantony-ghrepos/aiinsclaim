@@ -8,6 +8,7 @@ export const WORKBENCH_TABS = [
   { id: "financials", label: "Financials" },
   { id: "timeline", label: "Timeline" },
   { id: "tasks", label: "Tasks" },
+  { id: "communications", label: "Communications" },
 ] as const;
 
 export type WorkbenchTabId = (typeof WORKBENCH_TABS)[number]["id"];

@@ -171,6 +171,7 @@ export const PARAMETER_VALUE_TYPES = [
   "string",
   "boolean",
   "duration",
+  "json",
 ] as const;
 export type ParameterValueType = (typeof PARAMETER_VALUE_TYPES)[number];
 
@@ -211,3 +212,11 @@ export const AGENT_RUN_OUTCOMES = [
   "auto_applied",
 ] as const;
 export type AgentRunOutcome = (typeof AGENT_RUN_OUTCOMES)[number];
+
+export const NOTIFICATION_DELIVERY_STATUSES = ["draft", "mock_sent"] as const;
+export type NotificationDeliveryStatus =
+  (typeof NOTIFICATION_DELIVERY_STATUSES)[number];
+export const ORDINARY_NOTIFICATION_STATUS = "not_applicable" as const;
+export type NotificationStatus =
+  | NotificationDeliveryStatus
+  | typeof ORDINARY_NOTIFICATION_STATUS;
