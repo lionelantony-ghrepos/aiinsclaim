@@ -8,6 +8,8 @@ Rules every coding agent must follow when building aiinsclaim. Read DESIGN.md fi
 
 Full copy-paste version: [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md). Cursor loads `.cursor/rules/aiinsclaim.mdc` automatically.
 
+For fully autonomous delivery by subagents (manager → spec → test → code → review → doc → PR), use the global `pbi-autopilot` skill; project settings live in `.cursor/pbi-autopilot.md` (see [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md)). Run artifacts go to `ljadev/runs/PBI-NNN/` (gitignored).
+
 ## Golden rules
 
 1. **No hard-coded business values.** Thresholds, durations, limits, amounts → `parameters` table or decision tables (BUSINESS-RULES.md). If you type a business number into TS/TSX, stop and move it.

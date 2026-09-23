@@ -22,3 +22,17 @@ After the main prompt, each PBI session should also include:
 4. Patch `ljadoc/08-User-Guide.md` only for user-visible UI
 5. `npm run docs:generate` if schemas/packages changed; `npm run docs:kb-check`
 6. Do not index `ljadoc/` into future claims copilot RAG unless explicitly scheduled
+
+---
+
+## Multi-agent autonomous PBI delivery (optional)
+
+To have subagents deliver a PBI end-to-end (manager → spec → test → code → review → doc → PR), use the global **`pbi-autopilot`** skill ([install](https://github.com/lionelantony-ghrepos/pbi-autopilot)). It holds the pipeline, gates, escalation rules and role charters. The aiinsclaim-specific settings and overrides live in [`.cursor/pbi-autopilot.md`](../.cursor/pbi-autopilot.md), which the skill reads automatically.
+
+Start a new Agent-mode chat with:
+
+```text
+Use the pbi-autopilot skill for PBI-NNN.
+```
+
+Optionally append the PRD's Cursor prompt for the PBI, or override settings inline (e.g. `AUTO_MERGE=true`).

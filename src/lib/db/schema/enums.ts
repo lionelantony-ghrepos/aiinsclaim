@@ -189,6 +189,14 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const PAYMENT_STATUSES = ["pending", "issued", "failed"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+export const SETTLEMENT_STATUSES = [
+  "proposed",
+  "pending_approval",
+  "approved",
+  "rejected",
+] as const;
+export type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
+
 export const AGENT_RUN_STATUSES = [
   "ok",
   "schema_retry",

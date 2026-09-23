@@ -38,6 +38,10 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Production SLA sweep
+
+Schedule a cron job to `POST /api/sweep/sla` with header `x-sweep-secret` set to `SWEEP_SECRET` from your environment. Admins can also trigger the same sweep from **SLA sweep** in the sidebar during development.
+
 ## Scripts
 
 | Command | Description |

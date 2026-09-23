@@ -269,17 +269,14 @@ async function guardBrAuth001(
   claimId: string,
   context: GuardContext,
 ): Promise<GuardResult> {
-  const claim = await loadClaim(db, claimId);
-  const inputs = context.authInputs ?? {
-    settlement_amount: Number(claim.estimatedAmount ?? 0),
-    approver_role: "adjuster",
-    approver_authority_level: 3,
-    fraud_band: "low",
-    siu_referred: claim.siuReferred,
-    siu_disposition: claim.siuDisposition ?? undefined,
-  };
+  if (!context.authInputs) {
+    throw new GuardFailedError(
+      "BR-AUTH-001",
+      "Authority inputs are required for settlement approval",
+    );
+  }
 
-  const result = await evaluateRuleSet(db, "BR-AUTH-001", inputs, {
+  const result = await evaluateRuleSet(db, "BR-AUTH-001", context.authInputs, {
     claimId,
     actor: context.actor ?? "state-machine:auth-guard",
     asOf: context.asOf,

@@ -23,4 +23,8 @@ function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) 
   );
 }
 
-export { Card, CardHeader, CardTitle };
+function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("pt-0", className)} {...props} />;
+}
+
+export { Card, CardHeader, CardTitle, CardContent };

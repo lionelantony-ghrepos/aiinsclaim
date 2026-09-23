@@ -21,12 +21,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
     roles: ["intake_agent", "adjuster", "supervisor", "siu_analyst", "admin"],
   },
   {
+    href: "/siu",
+    label: "SIU queue",
+    roles: ["siu_analyst", "supervisor"],
+  },
+  {
     href: "/dashboard",
     label: "Operations",
     roles: ["supervisor", "admin"],
   },
   { href: "/rules", label: "Rules", roles: ["admin"] },
   { href: "/parameters", label: "Parameters", roles: ["admin"] },
+  { href: "/sla", label: "SLA sweep", roles: ["admin"] },
   { href: "/dev/components", label: "Component lab", roles: USER_ROLES },
 ];
 

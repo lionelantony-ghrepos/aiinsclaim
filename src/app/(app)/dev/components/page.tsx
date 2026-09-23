@@ -4,8 +4,13 @@ import { DecisionTableGrid } from "@/components/decision-table-grid";
 import { FraudBandBadge } from "@/components/fraud-band-badge";
 import { SlaCountdown } from "@/components/sla-countdown";
 import { TaskCard } from "@/components/task-card";
+import { getDb } from "@/lib/db";
+import { getParameter } from "@/lib/rules/params";
 
-export default function ComponentsLabPage() {
+export default async function ComponentsLabPage() {
+  const warningRatio = Number(
+    (await getParameter(getDb(), "sla.esc.warning_ratio")).valueJson,
+  );
   return (
     <div className="mx-auto max-w-5xl space-y-10">
       <header className="space-y-2">
@@ -101,17 +106,20 @@ export default function ComponentsLabPage() {
             remainingLabel="6h remaining"
             status="running"
             elapsedRatio={0.4}
+            warningRatio={warningRatio}
             testId="sla-countdown"
           />
           <SlaCountdown
             remainingLabel="45m remaining"
             status="running"
             elapsedRatio={0.8}
+            warningRatio={warningRatio}
           />
           <SlaCountdown
             remainingLabel="Overdue 20m"
             status="breached"
             elapsedRatio={1.1}
+            warningRatio={warningRatio}
           />
         </div>
       </section>

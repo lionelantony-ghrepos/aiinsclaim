@@ -14,6 +14,15 @@ export {
 } from "./append-only";
 export { getClaimForUser, listClaimsForUser } from "./claims";
 export { listDocumentsForUser } from "./documents";
+export {
+  createDraftClaim,
+  getDraftClaimDetail,
+  insertClaimNotification,
+  listPoliciesForClaimant,
+  searchPoliciesForStaff,
+  updateDraftClaim,
+  uploadDraftDocument,
+} from "./intake";
 export { listNotificationsForUser } from "./notifications";
 export {
   countRuleAuditLog,
@@ -43,3 +52,14 @@ export {
   insertTask,
   updateTask,
 } from "./tasks";
+export {
+  bulkReassignDb,
+  claimTaskDb,
+  getTaskWithClaim,
+  listQueueTasks,
+  listStaffAssignees,
+  releaseTaskDb,
+  resolveTaskDb,
+  type QueueTaskRow,
+  type TaskWithClaim,
+} from "./tasks-queue";
