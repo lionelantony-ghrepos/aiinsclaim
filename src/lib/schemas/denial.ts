@@ -14,4 +14,5 @@ export const DENIAL_REASON_CODES = [
 ] as const;
 
 export const DenialReasonEnum = z.enum(DENIAL_REASON_CODES);
+export const DenialReasonCodesSchema = z.array(z.string().min(1)).min(1);
 export type DenialReasonCode = z.infer<typeof DenialReasonEnum>;

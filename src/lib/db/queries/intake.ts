@@ -401,6 +401,7 @@ export async function insertClaimNotification(
       kind: params.kind,
       title: params.title,
       bodyMd: params.bodyMd,
+      deliveryStatus: "not_applicable",
     })
     .returning();
   return row;

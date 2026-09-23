@@ -694,6 +694,7 @@ export async function bulkReassignDb(
       kind: "task_reassigned",
       title: "Task reassigned to you",
       bodyMd: `Claim **${row.claimNumber}** task (${row.task.type}) was reassigned by a supervisor.`,
+      deliveryStatus: "not_applicable",
     });
 
     await db.insert(auditLog).values({

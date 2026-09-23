@@ -26,11 +26,13 @@ import { getSettlementChecklist } from "@/lib/assessment/checklist";
 import { evaluateCoverage } from "@/lib/coverage";
 import { DENIAL_REASON_CODES } from "@/lib/schemas/denial";
 import { listActiveSlaTimersForClaim, timerCodeLabel } from "@/lib/sla";
+import { listClaimCommsForUser } from "@/lib/db/queries/notifications";
 import {
   slaDisplayElapsedRatio,
   slaDisplayRemainingLabel,
 } from "@/lib/ui/task-labels";
 import { CoveragePanel } from "./_components/coverage-panel";
+import { CommunicationsPanel } from "./_components/communications-panel";
 import { DocumentsPanel } from "./_components/documents-panel";
 import { FinancialsPanel } from "./_components/financials-panel";
 import { ItemsPanel } from "./_components/items-panel";
@@ -87,7 +89,8 @@ export default async function StaffClaimDetailPage({
   );
   const { id: claimId } = await params;
   const { tab } = await searchParams;
-  const activeTab = isWorkbenchTab(tab) ? tab : "overview";
+  const canonicalTab = tab === "comms" ? "communications" : tab;
+  const activeTab = isWorkbenchTab(canonicalTab) ? canonicalTab : "overview";
   const db = getDb();
 
   const workbench = await getWorkbenchClaim(db, user, claimId);
@@ -111,6 +114,7 @@ export default async function StaffClaimDetailPage({
     paymentRows,
     denialParam,
     ruleAuditRows,
+    commsOutbox,
   ] = await Promise.all([
     getTriageSummary(db, claimId),
     getLatestFraudScore(db, claimId),
@@ -128,6 +132,7 @@ export default async function StaffClaimDetailPage({
       valueJson: [...DENIAL_REASON_CODES],
     })),
     listRuleAuditForClaim(db, user, claimId),
+    listClaimCommsForUser(db, user, claimId),
   ]);
   const coverage = evaluateCoverage(
     {
@@ -373,6 +378,19 @@ export default async function StaffClaimDetailPage({
       {activeTab === "timeline" ? <TimelinePanel entries={timelineEntries} /> : null}
 
       {activeTab === "tasks" ? <TasksPanel tasks={claimTasks} /> : null}
+
+      {activeTab === "communications" ? (
+        <CommunicationsPanel
+          claimId={claim.id}
+          denialReasonCode={claim.denialReasonCode}
+          outbox={commsOutbox.map((row) => ({
+            id: row.id,
+            title: row.title,
+            bodyMd: row.bodyMd,
+            deliveryStatus: row.deliveryStatus,
+          }))}
+        />
+      ) : null}
     </div>
   );
 }

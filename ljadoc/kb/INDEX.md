@@ -46,7 +46,7 @@ GitHub issues: [PBIs #1–20](https://github.com/lionelantony-ghrepos/aiinsclaim
 | 017 | [PBI-017](as-built/PBI-017.md) | 2 | Planned (Should) |
 | 018 | [PBI-018](as-built/PBI-018.md) | 2 | Planned (Should) |
 | 019 | [PBI-019](as-built/PBI-019.md) | 3 | Shipped |
-| 020 | [PBI-020](as-built/PBI-020.md) | 3 | Planned (Could) |
+| 020 | [PBI-020](as-built/PBI-020.md) | 3 | Shipped |
 
 ## Architecture decision records
 

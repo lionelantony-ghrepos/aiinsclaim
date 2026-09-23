@@ -68,6 +68,7 @@ async function notifyClaimant(
     kind,
     title,
     bodyMd,
+    deliveryStatus: "not_applicable",
   });
 }
 
