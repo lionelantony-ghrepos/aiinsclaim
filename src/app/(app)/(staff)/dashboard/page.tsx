@@ -60,10 +60,6 @@ export default async function DashboardPage() {
   const totalBreaches =
     slaBreaches.find((b) => b.status === "TOTAL")?.total_breaches ?? 0;
 
-  const fraudReferralRate =
-    fraudDistribution.find((f) => f.band === "high" || f.band === "critical")
-      ?.percentage ?? 0;
-
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">

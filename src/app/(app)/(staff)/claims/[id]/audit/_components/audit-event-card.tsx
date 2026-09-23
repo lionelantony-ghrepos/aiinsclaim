@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, GitBranch, Zap, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import type { ClaimAuditEvent } from "@/lib/db/queries/kpi";
 
 type AuditEventCardProps = {
