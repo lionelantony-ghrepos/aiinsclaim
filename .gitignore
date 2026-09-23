@@ -46,5 +46,7 @@ next-env.d.ts
 # local sqlite + uploaded documents
 /ljadev/data/*.db
 /ljadev/data/*.db-*
+/ljadev/*.db
+/ljadev/*.db-*
 /ljadev/storage/claim-documents/**
 !/ljadev/storage/claim-documents/.gitkeep

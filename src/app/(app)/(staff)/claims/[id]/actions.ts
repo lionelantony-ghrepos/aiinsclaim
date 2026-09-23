@@ -257,6 +257,7 @@ export async function confirmReserveAction(
     });
 
     revalidateWorkbench(parsed.claimId);
+    emitMaterialChange(db, parsed.claimId, "reserve_change").catch(() => {});
     return {
       ok: true,
       data: { indemnityId: indemnityRow.id, expenseId: expenseRow.id },
@@ -475,6 +476,7 @@ export async function completeAssessmentAction(
     });
 
     revalidateWorkbench(parsed.claimId);
+    emitMaterialChange(db, parsed.claimId, "state_change").catch(() => {});
     return { ok: true, data: { claimId: parsed.claimId } };
   } catch (error) {
     return actionError(error);
@@ -579,13 +581,19 @@ export async function denyClaimAction(
 
 export async function regenerateSummaryAction(
   claimId: string,
-): Promise<WorkbenchActionResult<{ agentRunId: string }>> {
+): Promise<WorkbenchActionResult<{ agentRunId: string; agentFailed: boolean }>> {
   try {
-    await requireRole(...ASSESSMENT_ROLES);
+    await requireRole(
+      "intake_agent",
+      "adjuster",
+      "supervisor",
+      "siu_analyst",
+      "admin",
+    );
     const db = getDb();
-    const { agentRunId } = await regenerateSummary(db, claimId, "manual");
+    const { agentRunId, agentFailed } = await regenerateSummary(db, claimId, "manual");
     revalidateWorkbench(claimId);
-    return { ok: true, data: { agentRunId } };
+    return { ok: true, data: { agentRunId, agentFailed } };
   } catch (error) {
     return actionError(error);
   }

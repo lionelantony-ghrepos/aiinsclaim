@@ -10,6 +10,7 @@ import {
   claims,
   payments,
   reserves,
+  ruleAuditLog,
   settlements,
   tasks,
 } from "@/lib/db/schema";
@@ -110,6 +111,15 @@ export async function listClaimAgentRuns(db: Db, user: SessionUser, claimId: str
 export async function getClaimPolicy(db: Db, user: SessionUser, claimId: string) {
   const workbench = await getWorkbenchClaim(db, user, claimId);
   return workbench?.policy ?? null;
+}
+
+export async function listRuleAuditForClaim(db: Db, user: SessionUser, claimId: string) {
+  await assertClaimAccess(db, user, claimId);
+  return db
+    .select()
+    .from(ruleAuditLog)
+    .where(eq(ruleAuditLog.claimId, claimId))
+    .orderBy(asc(ruleAuditLog.evaluatedAt));
 }
 
 export type WorkbenchClaimRow = NonNullable<

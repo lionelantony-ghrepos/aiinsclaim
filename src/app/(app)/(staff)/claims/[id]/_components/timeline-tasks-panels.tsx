@@ -10,9 +10,11 @@ import { TaskCard } from "@/components/task-card";
 export type TimelineEntry = {
   id: string;
   at: Date;
-  kind: "state" | "task" | "agent" | "reserve" | "payment";
+  kind: "state" | "task" | "agent" | "reserve" | "payment" | "rule";
   title: string;
   detail: string;
+  /** Optional link for drill-down (e.g. agent run detail, rule audit) */
+  href?: string;
 };
 
 const KIND_TONE = {
@@ -21,15 +23,17 @@ const KIND_TONE = {
   agent: "warning",
   reserve: "success",
   payment: "success",
+  rule: "info",
 } as const;
 
-type KindFilter = "all" | "state" | "task" | "agent" | "reserve" | "payment";
+type KindFilter = "all" | "state" | "task" | "agent" | "reserve" | "payment" | "rule";
 
 const FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "state", label: "State" },
-  { value: "task", label: "Task" },
+  { value: "rule", label: "Rule" },
   { value: "agent", label: "Agent" },
+  { value: "task", label: "Task" },
   { value: "reserve", label: "Reserve" },
   { value: "payment", label: "Payment" },
 ];
