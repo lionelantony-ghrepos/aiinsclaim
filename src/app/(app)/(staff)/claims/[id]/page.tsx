@@ -17,6 +17,7 @@ import {
   listClaimTasks,
   listPayments,
   listReserves,
+  listRuleAuditForClaim,
   listSettlements,
 } from "@/lib/db/queries/workbench";
 import type { ClaimStatus, FraudBand, SiuDisposition } from "@/lib/db/schema";
@@ -109,6 +110,7 @@ export default async function StaffClaimDetailPage({
     settlements,
     paymentRows,
     denialParam,
+    ruleAuditRows,
   ] = await Promise.all([
     getTriageSummary(db, claimId),
     getLatestFraudScore(db, claimId),
@@ -125,6 +127,7 @@ export default async function StaffClaimDetailPage({
     getParameter(db, "denial.reason_codes").catch(() => ({
       valueJson: [...DENIAL_REASON_CODES],
     })),
+    listRuleAuditForClaim(db, user, claimId),
   ]);
   const coverage = evaluateCoverage(
     {
@@ -197,6 +200,13 @@ export default async function StaffClaimDetailPage({
       kind: "payment" as const,
       title: `Payment ${row.amount}`,
       detail: `${row.method} · ${row.status}${row.reference ? ` · ${row.reference}` : ""}`,
+    })),
+    ...ruleAuditRows.map((row) => ({
+      id: row.id,
+      at: row.evaluatedAt,
+      kind: "rule" as const,
+      title: `Rule: ${row.actor.replace(/^rule:/, "")}`,
+      detail: `${row.matchedRuleIds.length} rule${row.matchedRuleIds.length !== 1 ? "s" : ""} matched`,
     })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
