@@ -50,3 +50,6 @@ next-env.d.ts
 /ljadev/*.db-*
 /ljadev/storage/claim-documents/**
 !/ljadev/storage/claim-documents/.gitkeep
+
+# multi-agent PBI run artifacts (pbi-autopilot)
+/ljadev/runs/
