@@ -985,6 +985,80 @@ export async function denyClaimAction(
   }
 }
 
+export async function exportAuditChainToCsvAction(
+  claimId: string,
+): Promise<WorkbenchActionResult<{ csv: string }>> {
+  try {
+    const user = await requireRole(
+      "adjuster",
+      "supervisor",
+      "siu_analyst",
+      "admin",
+    );
+    const db = getDb();
+    if (!(await canAccessClaim(db, user, claimId))) {
+      throw new Error("FORBIDDEN");
+    }
+
+    const { getClaimAuditChain } = await import("@/lib/db/queries/kpi");
+    const auditChain = await getClaimAuditChain(db, claimId);
+    const headers = [
+      "event_number",
+      "event_type",
+      "event_id",
+      "event_at",
+      "actor",
+      "version_id",
+      "matched_rule_ids",
+      "agent_id",
+      "from_status",
+      "to_status",
+      "inputs_summary",
+      "outputs_summary",
+    ];
+    const rows = auditChain.map((event, index) => {
+      const inputs = event.inputs_json
+        ? JSON.stringify(JSON.parse(event.inputs_json))
+        : "";
+      const outputs = event.outputs_json
+        ? JSON.stringify(JSON.parse(event.outputs_json))
+        : "";
+      const matchedRules = event.matched_rule_ids
+        ? JSON.parse(event.matched_rule_ids).join("; ")
+        : "";
+
+      return [
+        index + 1,
+        event.event_type,
+        event.event_id,
+        new Date(event.event_at).toISOString(),
+        event.actor ?? "",
+        event.version_id ?? "",
+        matchedRules,
+        event.agent_id ?? "",
+        event.from_status ?? "",
+        event.to_status ?? "",
+        inputs,
+        outputs,
+      ].map((cell) => {
+        const value = String(cell);
+        return value.includes(",") || value.includes('"') || value.includes("\n")
+          ? `"${value.replace(/"/g, '""')}"`
+          : value;
+      });
+    });
+
+    return {
+      ok: true,
+      data: {
+        csv: [headers.join(","), ...rows.map((row) => row.join(","))].join("\n"),
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function regenerateSummaryAction(
   claimId: string,
 ): Promise<WorkbenchActionResult<{ agentRunId: string; agentFailed: boolean }>> {
