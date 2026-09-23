@@ -1,8 +1,8 @@
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { expect, test } from "@playwright/test";
 import { DEMO_ACCOUNT_EMAILS } from "@/lib/auth/demo-accounts";
 import { getDb } from "@/lib/db";
-import { claims, claimStateHistory, users } from "@/lib/db/schema";
+import { claims } from "@/lib/db/schema";
 import { loginAs } from "./helpers/auth";
 
 async function findTimelineClaim() {

@@ -598,3 +598,85 @@ export async function regenerateSummaryAction(
     return actionError(error);
   }
 }
+
+export async function exportAuditChainToCsvAction(
+  claimId: string,
+): Promise<WorkbenchActionResult<{ csv: string }>> {
+  try {
+    const user = await requireRole(
+      "adjuster",
+      "supervisor",
+      "siu_analyst",
+      "admin",
+    );
+    const db = getDb();
+
+    // Check access
+    if (!(await canAccessClaim(db, user, claimId))) {
+      throw new Error("FORBIDDEN");
+    }
+
+    // Fetch audit chain
+    const { getClaimAuditChain } = await import("@/lib/db/queries/kpi");
+    const auditChain = await getClaimAuditChain(db, claimId);
+
+    // Build CSV
+    const headers = [
+      "event_number",
+      "event_type",
+      "event_id",
+      "event_at",
+      "actor",
+      "version_id",
+      "matched_rule_ids",
+      "agent_id",
+      "from_status",
+      "to_status",
+      "inputs_summary",
+      "outputs_summary",
+    ];
+
+    const rows = auditChain.map((event, index) => {
+      const inputs = event.inputs_json
+        ? JSON.stringify(JSON.parse(event.inputs_json))
+        : "";
+      const outputs = event.outputs_json
+        ? JSON.stringify(JSON.parse(event.outputs_json))
+        : "";
+      const matchedRules = event.matched_rule_ids
+        ? JSON.parse(event.matched_rule_ids).join("; ")
+        : "";
+
+      return [
+        index + 1,
+        event.event_type,
+        event.event_id,
+        new Date(event.event_at).toISOString(),
+        event.actor ?? "",
+        event.version_id ?? "",
+        matchedRules,
+        event.agent_id ?? "",
+        event.from_status ?? "",
+        event.to_status ?? "",
+        inputs,
+        outputs,
+      ].map((cell) => {
+        // Escape CSV cells
+        const str = String(cell);
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      });
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    return { ok: true, data: { csv: csvContent } };
+  } catch (error) {
+    return actionError(error);
+  }
+}

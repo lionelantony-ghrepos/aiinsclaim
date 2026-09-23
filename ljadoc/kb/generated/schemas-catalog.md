@@ -18,6 +18,8 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - agents/intake.ts: IntakeAgentOutputSchema
 - agents/intake.ts: IntakeChecklistStateSchema
 - agents/intake.ts: IntakeCompletenessHintSchema
+- agents/summary.ts: SummaryAgentInputSchema
+- agents/summary.ts: SummaryAgentOutputSchema
 - agents/triage.ts: TriageAgentInputSchema
 - agents/triage.ts: TriageAgentOutputSchema
 - auth.ts: loginFormSchema
