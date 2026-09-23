@@ -10,6 +10,11 @@
 
 ---
 
+**Execution playbook:** [`E2E-Agentic-Testcase-Execution.md`](E2E-Agentic-Testcase-Execution.md)
+defines the one-test-at-a-time runbook, evidence contract, and GitHub execution
+issue workflow. Canonical TC issues remain testcase definitions; each execution
+cycle uses a new linked execution issue.
+
 ## 0. Goal
 
 Repeatable, **harness-agnostic** E2E testing that:

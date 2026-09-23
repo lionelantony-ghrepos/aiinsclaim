@@ -21,6 +21,9 @@ Living **as-built** handbook for humans (onboarding, ops) and coding agents (lat
 
 Full PBI → AC → TC matrix: [traceability.md](traceability.md)
 
+One-test-at-a-time execution workflow and the complete GitHub-linked testcase
+inventory: [E2E-Agentic-Testcase-Execution.md](../E2E-Agentic-Testcase-Execution.md)
+
 GitHub issues: [PBIs #1–20](https://github.com/lionelantony-ghrepos/aiinsclaim/issues?q=label%3Apbi) · [Test cases #21–112](https://github.com/lionelantony-ghrepos/aiinsclaim/issues?q=label%3Atest-case)
 
 ## As-built
