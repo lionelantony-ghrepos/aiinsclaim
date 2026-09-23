@@ -23,6 +23,12 @@ import {
   type TriageAgentInput,
   type TriageAgentOutput,
 } from "@/lib/schemas/agents/triage";
+import {
+  SummaryAgentInputSchema,
+  SummaryAgentOutputSchema,
+  type SummaryAgentInput,
+  type SummaryAgentOutput,
+} from "@/lib/schemas/agents/summary";
 
 export type AiGatewayRequest = {
   agentId: string;
@@ -336,6 +342,30 @@ export async function callAiGateway(
     };
   }
 
+  if (request.agentId === "AGT-SUMMARY") {
+    const parsedInput = SummaryAgentInputSchema.parse(request.input);
+
+    if (parsedInput.claimSnapshot.claimId.includes("gateway-fail")) {
+      throw new Error("AGT-SUMMARY gateway failure");
+    }
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          SummaryAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        // Silent degrade to deterministic mock per AGENT-OPS.
+      }
+    }
+
+    return {
+      output: mockSummaryResponse(parsedInput),
+      model: "mock:agt-summary-v1",
+      latencyMs: 1,
+    };
+  }
+
   throw new Error(`Unsupported agent: ${request.agentId}`);
 }
 
@@ -387,6 +417,72 @@ function mockFraudResponse(input: FraudAgentInput): FraudAgentOutput {
     evidence: [],
     confidence: 0.9,
   });
+}
+
+function mockSummaryResponse(input: SummaryAgentInput): SummaryAgentOutput {
+  const { claimSnapshot, recentEvents } = input;
+  const amount = claimSnapshot.estimatedAmount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+  const reserveAmt = claimSnapshot.reserveTotal.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+  const claimTypeLabel = claimSnapshot.claimType.replaceAll("_", " ");
+  const statusLabel = claimSnapshot.status.replaceAll("_", " ");
+  const latestEvent = recentEvents[0];
+  const eventLine = latestEvent
+    ? `Most recent activity: ${latestEvent.description}.`
+    : "No recent activity recorded.";
+  const fraudLine =
+    claimSnapshot.fraudBand !== null
+      ? `Fraud band: **${claimSnapshot.fraudBand}**.`
+      : "Fraud assessment pending.";
+  const siuLine = claimSnapshot.siuReferred ? " SIU referral is active." : "";
+
+  const summaryMd = [
+    `**${claimTypeLabel} Claim — ${claimSnapshot.claimNumber}**`,
+    "",
+    `Status: **${statusLabel}**. Line of business: ${claimSnapshot.lineOfBusiness}.`,
+    `Estimated amount: ${amount}. Reserve total: ${reserveAmt}.`,
+    "",
+    `Severity score: ${claimSnapshot.severityScore ?? "N/A"}. Complexity score: ${claimSnapshot.complexityScore ?? "N/A"}.`,
+    `${fraudLine}${siuLine}`,
+    "",
+    eventLine,
+  ]
+    .join("\n")
+    .slice(0, 2000);
+
+  const keyFacts: SummaryAgentOutput["keyFacts"] = [
+    { label: "Status", value: statusLabel },
+    { label: "Estimated amount", value: amount },
+    { label: "Reserve total", value: reserveAmt },
+    { label: "Line of business", value: claimSnapshot.lineOfBusiness },
+    { label: "Fraud band", value: claimSnapshot.fraudBand ?? "N/A" },
+    { label: "SIU referred", value: claimSnapshot.siuReferred ? "Yes" : "No" },
+    ...(claimSnapshot.severityScore !== null
+      ? [
+          {
+            label: "Severity score",
+            value: String(claimSnapshot.severityScore),
+          },
+        ]
+      : []),
+    ...(claimSnapshot.complexityScore !== null
+      ? [
+          {
+            label: "Complexity score",
+            value: String(claimSnapshot.complexityScore),
+          },
+        ]
+      : []),
+  ].slice(0, 10);
+
+  return SummaryAgentOutputSchema.parse({ summaryMd, keyFacts });
 }
 
 function mockTriageResponse(input: TriageAgentInput): TriageAgentOutput {

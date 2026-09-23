@@ -33,6 +33,7 @@ import { CoveragePanel } from "./_components/coverage-panel";
 import { DocumentsPanel } from "./_components/documents-panel";
 import { FinancialsPanel } from "./_components/financials-panel";
 import { ItemsPanel } from "./_components/items-panel";
+import { SummaryCard } from "./_components/summary-card";
 import {
   TasksPanel,
   TimelinePanel,
@@ -190,6 +191,13 @@ export default async function StaffClaimDetailPage({
       title: `${row.kind} reserve ${row.amount}`,
       detail: `source ${row.source.replaceAll("_", " ")}`,
     })),
+    ...paymentRows.map((row) => ({
+      id: row.id,
+      at: row.createdAt,
+      kind: "payment" as const,
+      title: `Payment ${row.amount}`,
+      detail: `${row.method} · ${row.status}${row.reference ? ` · ${row.reference}` : ""}`,
+    })),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   return (
@@ -245,6 +253,13 @@ export default async function StaffClaimDetailPage({
 
       {activeTab === "overview" ? (
         <div className="space-y-8" data-testid="workbench-overview">
+          <SummaryCard
+            claimId={claim.id}
+            summaryMd={claim.summaryMd ?? null}
+            summaryGeneratedAt={claim.summaryGeneratedAt ?? null}
+            summaryStale={claim.summaryStale}
+          />
+
           <TriageCard
             claimNumber={claim.claimNumber}
             route={claim.route}

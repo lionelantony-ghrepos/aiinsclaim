@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import { canAccessClaim, canWriteClaim } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/auth/session";
 import { runReserveAgent } from "@/lib/agents/reserve";
+import { emitMaterialChange, regenerateSummary } from "@/lib/agents/summary";
 import { getDb } from "@/lib/db";
 import {
   insertAuditLog,
@@ -490,6 +491,7 @@ export async function proposeSettlementAction(
     const result = await proposeSettlement(db, user, parsed);
     if (result.ok) {
       revalidateWorkbench(parsed.claimId);
+      emitMaterialChange(db, parsed.claimId, "settlement_change").catch(() => {});
     }
     return result;
   } catch (error) {
@@ -512,6 +514,7 @@ export async function approveSettlementAction(
     const result = await approveSettlement(db, user, parsed);
     if (result.ok || result.error.code === "SIU_HOLD") {
       revalidateWorkbench(parsed.claimId);
+      emitMaterialChange(db, parsed.claimId, "settlement_change").catch(() => {});
     }
     return result;
   } catch (error) {
@@ -529,6 +532,7 @@ export async function issuePaymentAction(
     const result = await issuePayment(db, user, parsed);
     if (result.ok) {
       revalidateWorkbench(parsed.claimId);
+      emitMaterialChange(db, parsed.claimId, "settlement_change").catch(() => {});
     }
     return result;
   } catch (error) {
@@ -546,6 +550,7 @@ export async function closeClaimAction(
     const result = await closeClaim(db, user, parsed);
     if (result.ok) {
       revalidateWorkbench(parsed.claimId);
+      emitMaterialChange(db, parsed.claimId, "state_change").catch(() => {});
     }
     return result;
   } catch (error) {
@@ -564,8 +569,23 @@ export async function denyClaimAction(
     if (result.ok) {
       revalidateWorkbench(parsed.claimId);
       revalidatePath("/queue");
+      emitMaterialChange(db, parsed.claimId, "state_change").catch(() => {});
     }
     return result;
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function regenerateSummaryAction(
+  claimId: string,
+): Promise<WorkbenchActionResult<{ agentRunId: string }>> {
+  try {
+    await requireRole(...ASSESSMENT_ROLES);
+    const db = getDb();
+    const { agentRunId } = await regenerateSummary(db, claimId, "manual");
+    revalidateWorkbench(claimId);
+    return { ok: true, data: { agentRunId } };
   } catch (error) {
     return actionError(error);
   }

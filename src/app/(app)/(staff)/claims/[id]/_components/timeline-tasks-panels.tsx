@@ -1,12 +1,16 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { TaskCard } from "@/components/task-card";
 
 export type TimelineEntry = {
   id: string;
   at: Date;
-  kind: "state" | "task" | "agent" | "reserve";
+  kind: "state" | "task" | "agent" | "reserve" | "payment";
   title: string;
   detail: string;
 };
@@ -16,19 +20,54 @@ const KIND_TONE = {
   task: "default",
   agent: "warning",
   reserve: "success",
+  payment: "success",
 } as const;
 
+type KindFilter = "all" | "state" | "task" | "agent" | "reserve" | "payment";
+
+const FILTER_OPTIONS: { value: KindFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "state", label: "State" },
+  { value: "task", label: "Task" },
+  { value: "agent", label: "Agent" },
+  { value: "reserve", label: "Reserve" },
+  { value: "payment", label: "Payment" },
+];
+
 export function TimelinePanel({ entries }: { entries: TimelineEntry[] }) {
+  const [filter, setFilter] = useState<KindFilter>("all");
+
+  const filtered =
+    filter === "all" ? entries : entries.filter((e) => e.kind === filter);
+
   return (
     <Card data-testid="workbench-timeline" className="space-y-3">
-      <CardHeader className="mb-0">
+      <CardHeader className="mb-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Timeline ({entries.length})</CardTitle>
+        <div
+          className="flex flex-wrap gap-1"
+          role="group"
+          aria-label="Filter timeline by kind"
+        >
+          {FILTER_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              variant={filter === opt.value ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter(opt.value)}
+              data-testid={`timeline-filter-${opt.value}`}
+              aria-pressed={filter === opt.value}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </CardHeader>
-      {entries.length === 0 ? (
-        <p className="text-sm text-text-muted">No history yet.</p>
+      {filtered.length === 0 ? (
+        <p className="text-sm text-text-muted">No entries for this filter.</p>
       ) : (
         <ol className="space-y-2">
-          {entries.map((entry) => (
+          {filtered.map((entry) => (
             <li
               key={`${entry.kind}-${entry.id}`}
               data-testid="timeline-entry"

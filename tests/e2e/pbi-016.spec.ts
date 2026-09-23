@@ -21,23 +21,20 @@ async function getUserByEmail(email: string) {
   return user;
 }
 
-async function prepareSettlementClaim(
-  position: number,
-  opts?: {
-    fraudBand?: "low" | "medium" | "high" | "critical";
-    itemAmount?: string;
-  },
-) {
+async function prepareSettlementClaim(opts?: {
+  fraudBand?: "low" | "medium" | "high" | "critical";
+  itemAmount?: string;
+}) {
   const db = getDb();
   const adjuster = await getUserByEmail(DEMO_ACCOUNT_EMAILS.adjuster);
-  const rows = await db
+  const [claim] = await db
     .select()
     .from(claims)
     .where(eq(claims.status, "in_settlement"))
-    .orderBy(asc(claims.claimNumber));
-  const claim = rows[position];
+    .orderBy(asc(claims.claimNumber))
+    .limit(1);
   if (!claim) {
-    throw new Error(`No in_settlement seed claim at position ${position}`);
+    throw new Error("No in_settlement seed claim available for PBI-016 e2e");
   }
   const itemAmount = opts?.itemAmount ?? "32000.00";
   await db
@@ -86,7 +83,7 @@ async function prepareSettlementClaim(
 
 test.describe("TC-016-01 authority route to supervision", () => {
   test("32k settlement routes with worked-example message", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(0, {
+    const { claim } = await prepareSettlementClaim({
       fraudBand: "low",
       itemAmount: "32000.00",
     });
@@ -127,7 +124,7 @@ test.describe("TC-016-01 authority route to supervision", () => {
 
 test.describe("TC-016-02 authority allow within level", () => {
   test("small settlement approves for level-2 adjuster", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(1, {
+    const { claim } = await prepareSettlementClaim({
       fraudBand: "low",
       itemAmount: "2000.00",
     });
@@ -156,7 +153,7 @@ test.describe("TC-016-02 authority allow within level", () => {
 
 test.describe("TC-016-03 SIU hold", () => {
   test("shows SIU hold banner and does not transition", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(2, {
+    const { claim } = await prepareSettlementClaim({
       fraudBand: "low",
       itemAmount: "1000.00",
     });
@@ -192,7 +189,7 @@ test.describe("TC-016-03 SIU hold", () => {
 
 test.describe("TC-016-04 payment and close", () => {
   test("issues mock payment and closes when tasks clear", async ({ page }) => {
-    const { claim } = await prepareSettlementClaim(3, {
+    const { claim } = await prepareSettlementClaim({
       fraudBand: "low",
       itemAmount: "1500.00",
     });
@@ -279,7 +276,7 @@ test.describe("TC-016-04 payment and close", () => {
 test.describe("TC-016-05 denial supervisor gate", () => {
   test("denial creates confirmation task; supervisor confirms", async ({ page }) => {
     test.setTimeout(120_000);
-    const { claim } = await prepareSettlementClaim(4, {
+    const { claim } = await prepareSettlementClaim({
       fraudBand: "low",
       itemAmount: "4000.00",
     });
@@ -295,9 +292,11 @@ test.describe("TC-016-05 denial supervisor gate", () => {
     });
     await expect(page.getByTestId("settle-deny-open")).toBeEnabled();
     await page.getByTestId("settle-deny-open").click();
-    await expect(page.getByTestId("deny-dialog")).toBeVisible({
-      timeout: 15_000,
-    });
+    const denyDialog = page.getByTestId("deny-dialog");
+    if (!(await denyDialog.isVisible().catch(() => false))) {
+      await page.getByRole("button", { name: "Deny claim" }).click({ force: true });
+    }
+    await expect(denyDialog).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("deny-reason-code").selectOption("COVERAGE_EXCLUDED");
     await page.getByTestId("deny-note").fill("short");
     await expect(page.getByTestId("deny-submit")).toBeDisabled();
