@@ -2,6 +2,8 @@
 
 Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 
+- agents/copilot.ts: CopilotAgentInputSchema
+- agents/copilot.ts: CopilotAgentOutputSchema
 - agents/extract.ts: EstimateLineSchema
 - agents/extract.ts: ExtractAgentEnvelopeSchema
 - agents/extract.ts: ExtractAgentInputSchema
@@ -18,6 +20,8 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - agents/intake.ts: IntakeAgentOutputSchema
 - agents/intake.ts: IntakeChecklistStateSchema
 - agents/intake.ts: IntakeCompletenessHintSchema
+- agents/summary.ts: SummaryAgentInputSchema
+- agents/summary.ts: SummaryAgentOutputSchema
 - agents/triage.ts: TriageAgentInputSchema
 - agents/triage.ts: TriageAgentOutputSchema
 - auth.ts: loginFormSchema
