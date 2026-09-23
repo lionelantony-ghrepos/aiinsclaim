@@ -29,6 +29,12 @@ import {
   type SummaryAgentInput,
   type SummaryAgentOutput,
 } from "@/lib/schemas/agents/summary";
+import {
+  CopilotAgentInputSchema,
+  CopilotAgentOutputSchema,
+  type CopilotAgentInput,
+  type CopilotAgentOutput,
+} from "@/lib/schemas/agents/copilot";
 
 export type AiGatewayRequest = {
   agentId: string;
@@ -44,6 +50,26 @@ export type AiGatewayResponse<T> = {
 
 function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function mockCopilotResponse(input: CopilotAgentInput): CopilotAgentOutput {
+  const question = input.question.toLowerCase();
+  if (question.includes("fraud")) {
+    return CopilotAgentOutputSchema.parse({
+      sql: "SELECT fraud_band, COUNT(*) AS claim_count FROM vw_fraud_summary GROUP BY fraud_band ORDER BY claim_count DESC",
+      explanation: "Grouped claims by the reported fraud band.",
+    });
+  }
+  if (question.includes("sla") || question.includes("breach")) {
+    return CopilotAgentOutputSchema.parse({
+      sql: "SELECT claim_number, timer_code, status, due_at FROM vw_sla_status ORDER BY due_at ASC",
+      explanation: "Listed SLA timers in due-date order.",
+    });
+  }
+  return CopilotAgentOutputSchema.parse({
+    sql: "SELECT claim_number, line_of_business, status, estimated_amount FROM vw_claims_reporting ORDER BY claim_number",
+    explanation: "Listed claim reporting fields for the claims portfolio.",
+  });
 }
 
 function mockIntakeResponse(input: IntakeAgentInput): IntakeAgentOutput {
@@ -362,6 +388,26 @@ export async function callAiGateway(
     return {
       output: mockSummaryResponse(parsedInput),
       model: "mock:agt-summary-v1",
+      latencyMs: 1,
+    };
+  }
+
+  if (request.agentId === "AGT-COPILOT") {
+    const parsedInput = CopilotAgentInputSchema.parse(request.input);
+
+    if (process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+      try {
+        return await callLiveGateway(request, (raw) =>
+          CopilotAgentOutputSchema.parse(raw),
+        );
+      } catch {
+        // Deterministic mock keeps the learning stack available without a key.
+      }
+    }
+
+    return {
+      output: mockCopilotResponse(parsedInput),
+      model: "mock:agt-copilot-v1",
       latencyMs: 1,
     };
   }

@@ -290,4 +290,10 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     valueType: "number",
     description: "Max rows returned by claims copilot",
   },
+  {
+    key: "copilot.timeout_ms",
+    valueJson: 30000,
+    valueType: "number",
+    description: "Read-only claims copilot query timeout",
+  },
 ];
