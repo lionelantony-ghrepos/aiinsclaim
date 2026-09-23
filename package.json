@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run db:push && vitest run",
+    "test": "tsx scripts/drop-views.ts && npm run db:push && tsx scripts/apply-kpi-views.ts && vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
