@@ -134,7 +134,16 @@ describe("PBI-007 claim state machine", () => {
       toStatus: "approved",
       actorId: ACTOR,
       reason: "Settlement approved",
-      guardContext: { asOf: AS_OF },
+      guardContext: {
+        asOf: AS_OF,
+        authInputs: {
+          settlement_amount: 5000,
+          approver_role: "adjuster",
+          approver_authority_level: 2,
+          fraud_band: "low",
+          siu_referred: false,
+        },
+      },
     });
     expect(approved.toStatus).toBe("approved");
 
@@ -290,6 +299,35 @@ describe("PBI-007 claim state machine", () => {
       .from(claims)
       .where(eq(claims.id, incomplete.claimId));
     expect(stillDraft.status).toBe("draft");
+  });
+
+  it("in_settlement → approved without authInputs fails BR-AUTH-001", async () => {
+    const fixture = await insertBaseClaim(isolated.db, {
+      status: "in_settlement",
+      estimatedAmount: "5000.00",
+    });
+
+    await expect(
+      transitionClaim(isolated.db, {
+        claimId: fixture.claimId,
+        toStatus: "approved",
+        actorId: ACTOR,
+        reason: "Attempt approval without authInputs",
+        guardContext: { asOf: AS_OF },
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        error instanceof GuardFailedError &&
+        error.guardCode === "BR-AUTH-001" &&
+        /authority inputs are required/i.test(error.message)
+      );
+    });
+
+    const [unchanged] = await isolated.db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, fixture.claimId));
+    expect(unchanged.status).toBe("in_settlement");
   });
 
   it("TC-007-04 disabled DB transition row blocks move", async () => {

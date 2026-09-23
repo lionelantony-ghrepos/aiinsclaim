@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { AppendOnlyViolationError } from "@/lib/auth/errors";
 import type { Db } from "@/lib/db/client";
 import {
@@ -127,6 +128,20 @@ export async function insertAgentRun(
 
 export function updateAgentRun(): never {
   return rejectAppendOnly("agent_runs");
+}
+
+/** HITL resolution may record accepted/overridden on the originating agent run. */
+export async function updateAgentRunOutcome(
+  db: Db,
+  id: string,
+  outcome: AgentRunOutcome,
+) {
+  const [row] = await db
+    .update(agentRuns)
+    .set({ outcome })
+    .where(eq(agentRuns.id, id))
+    .returning();
+  return row ?? null;
 }
 
 export function deleteAgentRun(): never {

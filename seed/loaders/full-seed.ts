@@ -28,6 +28,7 @@ import { generatePolicies } from "../generators/policies";
 import { generateUsers } from "../generators/users";
 import { deterministicId } from "../lib/deterministic-id";
 import { truncateAll } from "../lib/truncate";
+import { seedQueueTasks } from "../generators/tasks";
 import { seedRulesAndParameters } from "./rules";
 import { seedClaimTransitions } from "./transitions";
 
@@ -37,6 +38,7 @@ export type SeedResult = {
   policyCount: number;
   claimCount: number;
   documentCount: number;
+  taskCount: number;
 };
 
 export async function runFullSeed(
@@ -257,11 +259,23 @@ export async function runFullSeed(
     });
   }
 
+  const taskCount = await seedQueueTasks(
+    db,
+    seedClaims.map((claim) => ({
+      id: claim.id,
+      claimNumber: claim.claimNumber,
+      claimType: claim.claimType,
+      status: claim.status,
+    })),
+    seedUsers,
+  );
+
   return {
     userCount: seedUsers.length,
     partyCount: seedParties.length,
     policyCount: seedPolicies.length,
     claimCount: seedClaims.length,
     documentCount: documentPlan.length,
+    taskCount,
   };
 }

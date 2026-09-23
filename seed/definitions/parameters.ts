@@ -81,6 +81,12 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     description: "Max open tasks before adjuster is skipped",
   },
   {
+    key: "triage.retriage_amount_delta",
+    valueJson: 500,
+    valueType: "number",
+    description: "Minimum estimated amount change to trigger re-triage",
+  },
+  {
     key: "reserve.injury_factor",
     valueJson: 1.5,
     valueType: "number",
@@ -115,6 +121,18 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     valueJson: 100000,
     valueType: "number",
     description: "Level 3 settlement authority max",
+  },
+  {
+    key: "denial.reason_codes",
+    valueJson: [
+      "COVERAGE_EXCLUDED",
+      "POLICY_LAPSED",
+      "FRAUD_CONFIRMED",
+      "EXCLUSION_APPLIES",
+      "OTHER",
+    ],
+    valueType: "string",
+    description: "Coded denial reason list for DenialReasonEnum",
   },
   {
     key: "sla.ack_hours",
@@ -153,6 +171,78 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     description: "SLA to issue payment after approval",
   },
   {
+    key: "sla.task.verify_extraction",
+    valueJson: "24h",
+    valueType: "duration",
+    description: "SLA for verify_extraction tasks",
+  },
+  {
+    key: "sla.task.review_triage",
+    valueJson: "24h",
+    valueType: "duration",
+    description: "SLA for review_triage tasks",
+  },
+  {
+    key: "sla.task.review_fraud",
+    valueJson: "24h",
+    valueType: "duration",
+    description: "SLA for review_fraud tasks",
+  },
+  {
+    key: "sla.task.assess_claim",
+    valueJson: "48h",
+    valueType: "duration",
+    description: "SLA for assess_claim tasks",
+  },
+  {
+    key: "sla.task.approve_settlement",
+    valueJson: "24h",
+    valueType: "duration",
+    description: "SLA for approve_settlement tasks",
+  },
+  {
+    key: "sla.task.escalation",
+    valueJson: "8h",
+    valueType: "duration",
+    description: "SLA for escalation tasks",
+  },
+  {
+    key: "sla.task.siu_review",
+    valueJson: "24h",
+    valueType: "duration",
+    description: "SLA for siu_review tasks",
+  },
+  {
+    key: "sla.task.request_info",
+    valueJson: "72h",
+    valueType: "duration",
+    description: "SLA for request_info tasks",
+  },
+  {
+    key: "sla.esc.warning_ratio",
+    valueJson: 0.75,
+    valueType: "number",
+    description: "SLA warning escalation threshold ratio",
+  },
+  {
+    key: "sla.esc.breach_ratio",
+    valueJson: 1,
+    valueType: "number",
+    description: "SLA breach escalation threshold ratio",
+  },
+  {
+    key: "sla.esc.reassign_ratio",
+    valueJson: 1.5,
+    valueType: "number",
+    description: "SLA reassign escalation threshold ratio",
+  },
+  {
+    key: "sla.esc.critical_ratio",
+    valueJson: 2,
+    valueType: "number",
+    description: "SLA critical escalation threshold ratio",
+  },
+  {
     key: "doc.min_photos",
     valueJson: 2,
     valueType: "number",
@@ -169,6 +259,12 @@ export const PARAMETER_DEFINITIONS: ParameterDef[] = [
     valueJson: 10485760,
     valueType: "number",
     description: "Maximum upload size in bytes",
+  },
+  {
+    key: "doc.allowed_mimes",
+    valueJson: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+    valueType: "string",
+    description: "Allowed MIME types for document upload",
   },
   {
     key: "doc.autoaccept_confidence",

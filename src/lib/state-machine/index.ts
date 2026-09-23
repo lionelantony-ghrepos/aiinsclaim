@@ -7,6 +7,7 @@ import {
   type ClaimStatus,
   type TriggeredBy,
 } from "@/lib/db/schema";
+import { handleClaimTransitionSla } from "@/lib/sla/timers";
 import { isNonTerminalStatus } from "./completeness";
 import { GuardFailedError, IllegalTransitionError } from "./errors";
 import { runGuard, type GuardContext } from "./guards";
@@ -138,6 +139,14 @@ export async function transitionClaim(
     .update(claims)
     .set({ status: params.toStatus, updatedAt: now })
     .where(eq(claims.id, params.claimId));
+
+  await handleClaimTransitionSla(db, {
+    claimId: params.claimId,
+    fromStatus,
+    toStatus: params.toStatus,
+    lineOfBusiness: claim.lineOfBusiness,
+    now,
+  });
 
   return {
     claimId: params.claimId,

@@ -11,6 +11,7 @@ import type {
   PaymentStatus,
   ReserveKind,
   ReserveSource,
+  SettlementStatus,
   RuleActionType,
   RuleOperator,
   RuleVersionStatus,
@@ -277,6 +278,37 @@ export const reserves = sqliteTable("reserves", {
   supersedesId: text("supersedes_id"),
   approvalTaskId: text("approval_task_id").references(() => tasks.id),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export type SettlementItemRow = {
+  claimItemId: string;
+  amount: string;
+};
+
+export const settlements = sqliteTable("settlements", {
+  id: text("id").primaryKey(),
+  claimId: text("claim_id")
+    .notNull()
+    .references(() => claims.id),
+  itemsJson: text("items_json", { mode: "json" })
+    .$type<SettlementItemRow[]>()
+    .notNull(),
+  deductibleApplied: text("deductible_applied").notNull(),
+  totalAmount: text("total_amount").notNull(),
+  note: text("note"),
+  status: text("status").$type<SettlementStatus>().notNull().default("proposed"),
+  proposedBy: text("proposed_by")
+    .notNull()
+    .references(() => users.id),
+  authorityRuleAuditId: text("authority_rule_audit_id").references(
+    () => ruleAuditLog.id,
+  ),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
 });

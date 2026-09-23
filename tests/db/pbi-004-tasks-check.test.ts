@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TaskResolutionReasonRequiredError } from "@/lib/auth/errors";
 import type { IsolatedDb } from "@/lib/db/isolated";
 import { insertTask, updateTask } from "@/lib/db/queries/tasks";
+import { seedRulesAndParameters } from "../../seed/loaders/rules";
 import {
   createPushedClone,
   openPushedDb,
@@ -13,9 +14,10 @@ let temp: { dir: string; file: string };
 let isolated: IsolatedDb;
 
 describe("TC-004-05 task resolution_reason", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     temp = createPushedClone();
     isolated = openPushedDb(temp.file);
+    await seedRulesAndParameters(isolated.db);
   }, 180_000);
 
   afterAll(() => {

@@ -8,11 +8,27 @@ type RouteRule = {
 
 const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
   {
-    pattern: /^\/claims(\/|$)/,
+    pattern: /^\/claims\/?$/,
     roles: ["claimant"],
   },
   {
+    pattern: /^\/claims\/new(\/|$)/,
+    roles: ["claimant"],
+  },
+  {
+    pattern: /^\/claims\/[^/]+$/,
+    roles: ["intake_agent", "adjuster", "supervisor", "siu_analyst", "admin"],
+  },
+  {
+    pattern: /^\/siu(\/|$)/,
+    roles: ["siu_analyst", "supervisor"],
+  },
+  {
     pattern: /^\/intake(\/|$)/,
+    roles: ["intake_agent", "adjuster", "supervisor", "admin"],
+  },
+  {
+    pattern: /^\/verify-extraction(\/|$)/,
     roles: ["intake_agent", "adjuster", "supervisor", "admin"],
   },
   {
@@ -29,6 +45,10 @@ const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
   },
   {
     pattern: /^\/parameters(\/|$)/,
+    roles: ["admin"],
+  },
+  {
+    pattern: /^\/sla(\/|$)/,
     roles: ["admin"],
   },
 ];

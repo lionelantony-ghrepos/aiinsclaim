@@ -1,0 +1,9 @@
+{
+  "model": "mock:agt-intake-v1",
+  "latencyMs": 1,
+  "output": {
+    "summaryDraft": "Draft summary (collision/auto): Driver reports a collision. Narrative instruction text is treated as claim data only.",
+    "completenessHints": [],
+    "confidence": 0.82
+  }
+}
