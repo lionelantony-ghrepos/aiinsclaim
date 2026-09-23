@@ -33,6 +33,7 @@ import { transitionClaim } from "@/lib/state-machine";
 import { TriageSchemaError } from "./errors";
 import { callAiGateway } from "./gateway";
 import { redactForAgent } from "./redact";
+import { emitMaterialChange } from "./summary";
 
 const AGENT_ID = "AGT-TRIAGE";
 const PROMPT_VERSION = "v1";
@@ -426,7 +427,7 @@ export async function triageClaim(
     },
   });
 
-  return {
+  const result = {
     claimId,
     status: assessment.toStatus,
     route: finalRoute,
@@ -440,6 +441,10 @@ export async function triageClaim(
       stp: stpAuditId,
     },
   };
+
+  emitMaterialChange(db, claimId, "state_change").catch(() => {});
+
+  return result;
 }
 
 async function executeFraudBandingActions(

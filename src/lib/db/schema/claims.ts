@@ -50,6 +50,8 @@ export const claims = sqliteTable("claims", {
     .default(false),
   policeReportNumber: text("police_report_number"),
   summaryMd: text("summary_md"),
+  summaryGeneratedAt: integer("summary_generated_at", { mode: "timestamp_ms" }),
+  summaryStale: integer("summary_stale", { mode: "boolean" }).notNull().default(false),
   denialReasonCode: text("denial_reason_code"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
