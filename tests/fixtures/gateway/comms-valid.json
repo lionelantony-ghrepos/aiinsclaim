@@ -1,0 +1,7 @@
+{
+  "subject": "We received your claim",
+  "bodyMd": "We received your claim and will review the reported information provided.",
+  "templateId": "claims.acknowledgement.v1",
+  "readingLevel": "plain",
+  "tone": "warm"
+}

@@ -1,0 +1,7 @@
+{
+  "subject": "Invalid draft",
+  "bodyMd": "This output uses an unsupported reading level.",
+  "templateId": "claims.acknowledgement.v1",
+  "readingLevel": "doctoral",
+  "tone": "legalese"
+}

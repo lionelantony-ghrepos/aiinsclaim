@@ -6,12 +6,14 @@ import { ZodError } from "zod";
 import { canAccessClaim, canWriteClaim } from "@/lib/auth/scope";
 import { requireRole } from "@/lib/auth/session";
 import { runReserveAgent } from "@/lib/agents/reserve";
+import { runCommsAgent } from "@/lib/agents/comms";
 import { emitMaterialChange, regenerateSummary } from "@/lib/agents/summary";
 import { getDb } from "@/lib/db";
 import {
   insertAuditLog,
   updateAgentRunOutcome,
 } from "@/lib/db/queries/append-only";
+import { listClaimCommsForUser } from "@/lib/db/queries/notifications";
 import { insertTask } from "@/lib/db/queries/tasks";
 import {
   agentRuns,
@@ -35,6 +37,19 @@ import {
   IssuePaymentSchema,
   ProposeSettlementSchema,
 } from "@/lib/schemas/financials";
+import {
+  COMMS_TEMPLATES,
+  CommsAgentInputSchema,
+  CommsAgentOutputSchema,
+  CommsDraftRequestSchema,
+  CommsSendSchema,
+  CommsUpdateDraftSchema,
+  type CommsDraftType,
+} from "@/lib/schemas/agents/comms";
+import {
+  DENIAL_REASON_CODES,
+  DenialReasonCodesSchema,
+} from "@/lib/schemas/denial";
 import { getParameter } from "@/lib/rules/params";
 import {
   approveSettlement,
@@ -72,6 +87,12 @@ function actionError(error: unknown): WorkbenchActionResult<never> {
   if (error instanceof Error && error.message === "FORBIDDEN") {
     return { ok: false, error: { code: "FORBIDDEN", message: "Forbidden" } };
   }
+  if (error instanceof Error && error.message === "VALIDATION_FAILED") {
+    return {
+      ok: false,
+      error: { code: "VALIDATION_FAILED", message: "Validation failed" },
+    };
+  }
   console.error("[workbench-action] error:", error);
   return {
     ok: false,
@@ -81,6 +102,390 @@ function actionError(error: unknown): WorkbenchActionResult<never> {
 
 function revalidateWorkbench(claimId: string) {
   revalidatePath(`/claims/${claimId}`);
+}
+
+const COMMS_ROLES = [
+  "intake_agent",
+  "adjuster",
+  "supervisor",
+  "siu_analyst",
+  "admin",
+] as const satisfies readonly UserRole[];
+
+function commsTemplate(
+  templateId: string,
+  draftType: "acknowledgement" | "information_request" | "decision_letter",
+) {
+  const template = COMMS_TEMPLATES.find(
+    (candidate) =>
+      candidate.id === templateId && candidate.draftType === draftType,
+  );
+  if (!template) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  return {
+    templateId: template.id,
+    subject: `${template.label} for staff review`,
+    bodyMd: `${template.label} approved template for staff review.`,
+    context: { locale: "en-US" },
+  };
+}
+
+async function findCommsAgentRun(
+  db: ReturnType<typeof getDb>,
+  agentRunId: string,
+  claimId: string,
+) {
+  const [run] = await db
+    .select({
+      id: agentRuns.id,
+      claimId: agentRuns.claimId,
+      agentId: agentRuns.agentId,
+      inputJson: agentRuns.inputJson,
+      outputJson: agentRuns.outputJson,
+      outcome: agentRuns.outcome,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, agentRunId),
+        eq(agentRuns.claimId, claimId),
+        eq(agentRuns.agentId, "AGT-COMMS"),
+      ),
+    )
+    .limit(1);
+  return run ?? null;
+}
+
+async function getConfiguredDenialCodes(db: ReturnType<typeof getDb>) {
+  const parameter = await getParameter(db, "denial.reason_codes");
+  const parsed = DenialReasonCodesSchema.safeParse(parameter.valueJson);
+  return parsed.success ? parsed.data : [...DENIAL_REASON_CODES];
+}
+
+function parseDraftType(value: string | null): CommsDraftType | null {
+  const result = CommsUpdateDraftSchema.shape.draftType.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+function assertDecisionLetterBody(
+  draftType: CommsDraftType,
+  bodyMd: string,
+  denialReasonCode: string | null,
+  configuredCodes: string[],
+) {
+  if (draftType !== "decision_letter") return;
+  if (
+    !denialReasonCode ||
+    !configuredCodes.includes(denialReasonCode) ||
+    !bodyMd.includes(denialReasonCode)
+  ) {
+    throw new Error("VALIDATION_FAILED");
+  }
+}
+
+function parseRunProvenance(
+  sourceRun: Awaited<ReturnType<typeof findCommsAgentRun>>,
+) {
+  if (!sourceRun) return null;
+  const input = CommsAgentInputSchema.safeParse(sourceRun.inputJson);
+  const output = CommsAgentOutputSchema.safeParse(sourceRun.outputJson);
+  if (!input.success || !output.success) return null;
+  const template = COMMS_TEMPLATES.find(
+    (candidate) =>
+      candidate.id === input.data.template.templateId &&
+      candidate.draftType === input.data.draftType,
+  );
+  if (!template) return null;
+  return {
+    draftType: input.data.draftType,
+    templateId: template.id,
+    denialReasonCode: input.data.claimFacts.denialReasonCode,
+  };
+}
+
+export async function draftCommunication(
+  input: unknown,
+): Promise<WorkbenchActionResult<Awaited<ReturnType<typeof runCommsAgent>>["output"] & {
+  draftType: CommsDraftType;
+  agentRunId: string;
+  agentFailed: boolean;
+}>> {
+  try {
+    const user = await requireRole(...COMMS_ROLES);
+    const parsed = CommsDraftRequestSchema.parse(input);
+    const db = getDb();
+    if (!(await canAccessClaim(db, user, parsed.claimId))) {
+      return { ok: false, error: { code: "FORBIDDEN", message: "Forbidden" } };
+    }
+    const [claim] = await db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, parsed.claimId))
+      .limit(1);
+    if (!claim) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Claim not found" } };
+    }
+    const template = commsTemplate(parsed.templateId, parsed.draftType);
+    const configuredDenialCodes = await getConfiguredDenialCodes(db);
+    const denialReasonCode =
+      claim.denialReasonCode && configuredDenialCodes.includes(claim.denialReasonCode)
+        ? claim.denialReasonCode
+        : null;
+    if (parsed.draftType === "decision_letter" && !denialReasonCode) {
+      return {
+        ok: false,
+        error: { code: "VALIDATION_FAILED", message: "A coded denial reason is required." },
+      };
+    }
+    const agentInput = CommsAgentInputSchema.parse({
+      draftType: parsed.draftType,
+      claimFacts: {
+        claimNumber: claim.claimNumber,
+        claimId: claim.id,
+        lineOfBusiness: claim.lineOfBusiness,
+        claimType: claim.claimType,
+        denialReasonCode,
+      },
+      claimSummaryMd: claim.summaryMd ?? "",
+      template,
+      context: template.context,
+      tone: parsed.tone,
+      readingLevel: parsed.readingLevel,
+    });
+    const result = await runCommsAgent(db, agentInput);
+    return {
+      ok: true,
+      data: {
+        ...result.output,
+        draftType: parsed.draftType,
+        agentRunId: result.agentRunId,
+        agentFailed: result.agentFailed,
+      },
+    };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function updateCommunicationDraft(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ outboxId: string }>> {
+  try {
+    const user = await requireRole(...COMMS_ROLES);
+    const parsed = CommsUpdateDraftSchema.parse(input);
+    const db = getDb();
+    const rows = await listClaimCommsForUser(db, user, parsed.claimId);
+    const existing = parsed.outboxId
+      ? rows.find((row) => row.id === parsed.outboxId)
+      : undefined;
+    if (existing && existing.deliveryStatus !== "draft") {
+      return { ok: false, error: { code: "CONFLICT", message: "Sent communications cannot be edited" } };
+    }
+    const template = commsTemplate(parsed.templateId, parsed.draftType);
+    const [claim] = await db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, parsed.claimId))
+      .limit(1);
+    if (!claim) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Claim not found" } };
+    }
+    const denialCodes = await getConfiguredDenialCodes(db);
+    const storedDraftType = existing ? parseDraftType(existing.draftType) : null;
+    if (existing && existing.draftType !== null && !storedDraftType) {
+      throw new Error("VALIDATION_FAILED");
+    }
+    if (storedDraftType && storedDraftType !== parsed.draftType) {
+      throw new Error("VALIDATION_FAILED");
+    }
+    if (existing?.templateId && existing.templateId !== template.templateId) {
+      throw new Error("VALIDATION_FAILED");
+    }
+    const outboxId = existing?.id ?? crypto.randomUUID();
+    const agentRunId = existing?.agentRunId ?? parsed.agentRunId ?? null;
+    if (agentRunId) {
+      const sourceRun = await findCommsAgentRun(db, agentRunId, parsed.claimId);
+      const provenance = parseRunProvenance(sourceRun);
+      if (
+        !provenance ||
+        provenance.draftType !== parsed.draftType ||
+        provenance.templateId !== template.templateId
+      ) {
+        return {
+          ok: false,
+          error: { code: "VALIDATION_FAILED", message: "Invalid communication draft provenance" },
+        };
+      }
+    }
+    assertDecisionLetterBody(
+      parsed.draftType,
+      parsed.bodyMd,
+      claim.denialReasonCode,
+      denialCodes,
+    );
+    if (existing) {
+      await db
+        .update(notifications)
+        .set({
+          title: parsed.subject,
+          bodyMd: parsed.bodyMd,
+          draftType: parsed.draftType,
+          templateId: template.templateId,
+          agentRunId,
+        })
+        .where(and(eq(notifications.id, outboxId), eq(notifications.userId, user.id)));
+      if (
+        agentRunId &&
+        (existing.title !== parsed.subject || existing.bodyMd !== parsed.bodyMd)
+      ) {
+        await updateAgentRunOutcome(db, agentRunId, "overridden");
+      }
+    } else {
+      await db.insert(notifications).values({
+        id: outboxId,
+        userId: user.id,
+        claimId: parsed.claimId,
+        kind: "comms",
+        title: parsed.subject,
+        bodyMd: parsed.bodyMd,
+        deliveryStatus: "draft",
+        draftType: parsed.draftType,
+        templateId: template.templateId,
+        agentRunId,
+      });
+      if (agentRunId) {
+        const sourceRun = await findCommsAgentRun(db, agentRunId, parsed.claimId);
+        const generatedSubject =
+          typeof sourceRun?.outputJson?.subject === "string"
+            ? sourceRun.outputJson.subject
+            : null;
+        const generatedBody =
+          typeof sourceRun?.outputJson?.bodyMd === "string"
+            ? sourceRun.outputJson.bodyMd
+            : null;
+        if (
+          sourceRun &&
+          (generatedSubject !== parsed.subject || generatedBody !== parsed.bodyMd)
+        ) {
+          await updateAgentRunOutcome(db, agentRunId, "overridden");
+        }
+      }
+    }
+    await insertAuditLog(db, {
+      actor: `user:${user.id}`,
+      action: "communication_draft_saved",
+      entity: "notifications",
+      entityId: outboxId,
+      afterJson: { claimId: parsed.claimId, templateId: parsed.templateId },
+    });
+    revalidateWorkbench(parsed.claimId);
+    return { ok: true, data: { outboxId } };
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function sendMockCommunication(
+  input: unknown,
+): Promise<WorkbenchActionResult<{ outboxId: string }>> {
+  try {
+    const user = await requireRole(...COMMS_ROLES);
+    const parsed = CommsSendSchema.parse(input);
+    const db = getDb();
+    const rows = await listClaimCommsForUser(db, user, parsed.claimId);
+    const existing = rows.find((row) => row.id === parsed.outboxId);
+    if (!existing) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Draft not found" } };
+    }
+    if (existing.deliveryStatus !== "draft") {
+      return { ok: false, error: { code: "CONFLICT", message: "Communication was already sent" } };
+    }
+    const draftType = parseDraftType(existing.draftType);
+    if (!draftType || !existing.templateId) {
+      return {
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "Untyped communication drafts cannot be sent",
+        },
+      };
+    }
+    const template = commsTemplate(existing.templateId, draftType);
+    const [claim] = await db
+      .select()
+      .from(claims)
+      .where(eq(claims.id, parsed.claimId))
+      .limit(1);
+    if (!claim) {
+      return { ok: false, error: { code: "NOT_FOUND", message: "Claim not found" } };
+    }
+    const denialCodes = await getConfiguredDenialCodes(db);
+    assertDecisionLetterBody(
+      draftType,
+      existing.bodyMd,
+      claim.denialReasonCode,
+      denialCodes,
+    );
+    if (existing.agentRunId) {
+      const sourceRun = await findCommsAgentRun(
+        db,
+        existing.agentRunId,
+        parsed.claimId,
+      );
+      const provenance = parseRunProvenance(sourceRun);
+      if (
+        !provenance ||
+        provenance.draftType !== draftType ||
+        provenance.templateId !== template.templateId
+      ) {
+        return {
+          ok: false,
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Invalid communication draft provenance",
+          },
+        };
+      }
+    }
+    await db
+      .update(notifications)
+      .set({ deliveryStatus: "mock_sent" })
+      .where(and(eq(notifications.id, parsed.outboxId), eq(notifications.userId, user.id)));
+    if (existing.agentRunId) {
+      const sourceRun = await findCommsAgentRun(
+        db,
+        existing.agentRunId,
+        parsed.claimId,
+      );
+      const generatedSubject =
+        typeof sourceRun.outputJson?.subject === "string"
+          ? sourceRun.outputJson.subject
+          : null;
+      const generatedBody =
+        typeof sourceRun.outputJson?.bodyMd === "string"
+          ? sourceRun.outputJson.bodyMd
+          : null;
+      const unchanged =
+        generatedSubject === existing.title && generatedBody === existing.bodyMd;
+      if (unchanged) {
+        await updateAgentRunOutcome(db, existing.agentRunId, "accepted");
+      } else if (sourceRun.outcome !== "overridden") {
+        await updateAgentRunOutcome(db, existing.agentRunId, "overridden");
+      }
+    }
+    await insertAuditLog(db, {
+      actor: `user:${user.id}`,
+      action: "communication_mock_sent",
+      entity: "notifications",
+      entityId: parsed.outboxId,
+      afterJson: { claimId: parsed.claimId },
+    });
+    revalidateWorkbench(parsed.claimId);
+    return { ok: true, data: { outboxId: parsed.outboxId } };
+  } catch (error) {
+    return actionError(error);
+  }
 }
 
 export async function suggestReserveAction(
@@ -378,6 +783,7 @@ export async function requestInfoAction(
         kind: "info_requested",
         title: `More information needed for ${claim.claimNumber}`,
         bodyMd: parsed.note,
+        deliveryStatus: "not_applicable",
       });
     }
 

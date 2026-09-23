@@ -2,6 +2,15 @@
 
 Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 
+- agents/comms.ts: CommsAgentInputSchema
+- agents/comms.ts: CommsAgentOutputSchema
+- agents/comms.ts: CommsDraftRequestSchema
+- agents/comms.ts: CommsDraftSchema
+- agents/comms.ts: CommsManualReviewTaskRoutingSchema
+- agents/comms.ts: CommsReadingLevelSchema
+- agents/comms.ts: CommsSendSchema
+- agents/comms.ts: CommsToneSchema
+- agents/comms.ts: CommsUpdateDraftSchema
 - agents/copilot.ts: CopilotAgentInputSchema
 - agents/copilot.ts: CopilotAgentOutputSchema
 - agents/extract.ts: EstimateLineSchema
@@ -45,6 +54,7 @@ Exported `*Schema` bindings under `src/lib/schemas/` (static scan).
 - claims.ts: runIntakeCopilotSchema
 - claims.ts: submitClaimSchema
 - claims.ts: updateDraftClaimSchema
+- denial.ts: DenialReasonCodesSchema
 - financials.ts: ApproveSettlementSchema
 - financials.ts: CloseClaimSchema
 - financials.ts: CompleteAssessmentSchema
