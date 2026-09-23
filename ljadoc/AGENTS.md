@@ -8,7 +8,7 @@ Rules every coding agent must follow when building aiinsclaim. Read DESIGN.md fi
 
 Full copy-paste version: [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md). Cursor loads `.cursor/rules/aiinsclaim.mdc` automatically.
 
-For fully autonomous delivery by subagents (manager → spec → test → code → review → doc → PR), append the **Multi-agent autonomous PBI delivery** block from [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md). Run artifacts go to `ljadev/runs/PBI-NNN/` (gitignored).
+For fully autonomous delivery by subagents (manager → spec → test → code → review → doc → PR), use the global `pbi-autopilot` skill; project settings live in `.cursor/pbi-autopilot.md` (see [00-MAIN-PROMPT.md](00-MAIN-PROMPT.md)). Run artifacts go to `ljadev/runs/PBI-NNN/` (gitignored).
 
 ## Golden rules
 
